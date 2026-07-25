@@ -179,14 +179,18 @@ clinically — is our strongest class at 0.84."
 
 | Task | Method | Labels |
 |---|---|---|
-| Enhancement | Self-supervised restoration | none |
-| Region segmentation | SLIC superpixels + clustering | none |
+| Enhancement | Self-supervised restoration (one model per sequence) | none |
+| Region segmentation | **Self-supervised CNN** (differentiable feature clustering) | none |
+| Canal measurement | Geometric — canal width profile | none |
 
-SAY: "The rules forbid annotations for spine, so both of these are unsupervised —
-the restoration model trains on the scan against a degraded copy of itself, and the
-region segmentation is superpixel clustering."
+SAY: "The rules forbid annotations for spine, so everything here is unsupervised. The
+restoration model trains against a degraded copy of the scan itself. For segmentation
+we went further than clustering — this is a small network optimised on each scan, using
+the image's own structure as its supervision. Look at the progression: k-means and SLIC
+only group brightness and fragment the image; the trained network resolves the cord, the
+vertebral chain and the soft tissue as coherent structures."
 
-IMAGE: `images/spine_slic_compare.png`
+IMAGE: `images/spine_method_comparison.png`
 
 ---
 

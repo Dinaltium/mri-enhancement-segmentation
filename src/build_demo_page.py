@@ -371,6 +371,15 @@ table{{width:100%;border-collapse:collapse;margin-top:12px;font-size:15px}} th,t
     <tr><td>Reconstruction-difference view</td><td>Autoencoder trained on healthy scans only — <b>validated and withdrawn as a detector</b></td><td class="good">none</td></tr>
   </table></div>
 
+  <h3>Spine segmentation — every method we tried, on the same slice</h3>
+  {img(f"{D}/spine_method_comparison.png","Left to right: the raw scan, CLAHE, per-pixel k-means, SLIC superpixels, and our self-supervised CNN. Each labelled method uses no annotations. The progression is visible — intensity clustering fragments the image, while the trained network resolves the cord, the vertebral chain and the surrounding soft tissue as coherent structures.")}
+  <div class="simple"><b>Why the CNN is the honest headline here:</b> k-means and SLIC only group
+  brightness — they cannot represent structure. The self-supervised network is optimised on the scan
+  itself (differentiable feature clustering): each pixel is pushed to commit to a class, neighbours are
+  pushed to agree, and a balance term prevents everything collapsing into one region. It is a genuinely
+  trained model that still requires <b>zero annotations</b>, which is exactly what the brief asks for
+  on spine.</div>
+
   <h3>Spine — a negative result we are reporting rather than hiding</h3>
   <div class="simple"><b>The idea:</b> train an autoencoder on <b>healthy spines only</b>, then whatever
   it cannot reconstruct should be the pathology. The reconstruction is convincing and the error map
