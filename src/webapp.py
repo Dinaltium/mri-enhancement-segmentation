@@ -436,13 +436,14 @@ def build_pipeline_result(raw: bytes, filename: str, region: str) -> str:
                 'channels the model expects (FLAIR carries most tumour signal); a minimum-size guard '
                 'prevents false alarms.</p>')
     else:
-        from spine_pipeline import slic_roi
-        labels = slic_roi(clahe_enhance(sl), n_segments=250, k=4)
-        base = cv2.cvtColor((ai * 255).astype(np.uint8), cv2.COLOR_GRAY2BGR)
-        roi = cv2.addWeighted(base, 0.7, colorize_labels(labels, 3), 0.55, 0)
-        out += _pstep("Step 5 · ROI segmentation (SLIC superpixels)", _np_b64(roi, gray=False),
-                      '<div class="verdict v-info">🧩 Coherent regions (disc / vertebra / cord / soft '
-                      'tissue) via SLIC-superpixel clustering — cleaner than pixel clustering.</div>')
+        from spine_deep_segmentation import segment as deep_segment, overlay as deep_overlay
+        enh_for_seg = clahe_enhance(sl)
+        dlabels, dinfo = deep_segment(enh_for_seg, n_classes=8, iters=80)
+        out += _pstep("Step 5 · ROI segmentation (self-supervised CNN)",
+                      _np_b64(deep_overlay(enh_for_seg, dlabels), gray=False),
+                      '<div class="verdict v-ok">Segmented by a <b>neural network trained on this '
+                      f'scan itself</b> — <b>{dinfo["classes_found"]} distinct structures</b> emerged '
+                      'from 8 candidates, with no annotations used.</div>')
         # Step 6 · self-supervised anomaly detection (where is the abnormality?)
         try:
             from spine_measurements import measure, overlay_canal, profile_plot
@@ -461,7 +462,15 @@ def build_pipeline_result(raw: bytes, filename: str, region: str) -> str:
                               f'Median width <b>{s["median_width_px"]} px</b>, narrowest point '
                               f'<b>{s["min_width_px"]} px</b>, narrowing ratio '
                               f'<b>{s["narrowing_ratio"]}</b> (narrowest ÷ typical).</div>')
-                note = ('<p class="note"><b>Why width, and why this is honest:</b> spinal stenosis '
+                note = ('<p class="note"><b>How the segmentation works:</b> a small convolutional '
+                        'network is optimised directly on this scan (differentiable feature '
+                        'clustering, Kanezaki 2018). Its supervision comes from the image itself — '
+                        'each pixel is pushed to commit to one class, neighbouring pixels are pushed '
+                        'to agree, and a balance term stops every region collapsing into one. '
+                        '<b>No annotations are used</b>, which is what the rules require, and unlike '
+                        'intensity clustering it separates structures by learned features rather than '
+                        'brightness alone.</p>'
+                        '<p class="note"><b>Why width, and why this is honest:</b> spinal stenosis '
                         '<i>is</i> narrowing of the canal, so canal width is the quantity a '
                         'radiologist actually reads — a measurement we can check, not a prediction. '
                         'The narrowing ratio compares the narrowest point to that same canal\'s own '
