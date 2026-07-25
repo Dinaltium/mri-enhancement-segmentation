@@ -1411,6 +1411,15 @@ button.ghost{{background:var(--surface);color:var(--ink);border-color:var(--line
 button.ghost:hover{{background:var(--panel);border-color:var(--ink-2)}}
 button:disabled{{opacity:.45;cursor:not-allowed}}
 .hint-row{{font-size:0.75rem;color:var(--ink-2);margin-top:10px;line-height:1.5}}
+/* "what do I upload" table — the question every viewer asks first */
+.whattab{{width:100%;border-collapse:collapse;margin-top:12px;font-size:0.75rem;
+  line-height:1.5}}
+.whattab th,.whattab td{{border:1px solid var(--line);padding:7px 9px;text-align:left;
+  vertical-align:top}}
+.whattab th{{background:var(--panel);font-weight:600;color:var(--ink)}}
+.whattab td{{color:var(--ink-2)}}
+.whattab b{{color:var(--ink)}}
+.whattab .muted{{color:var(--ink-2);opacity:0.8}}
 .quick{{display:flex;gap:8px;flex-wrap:wrap;margin-top:11px;padding-top:11px;border-top:1px solid var(--line)}}
 .quick a{{font-size:0.75rem;font-weight:600;text-decoration:none;color:var(--ink);
   border:1px solid var(--line-2);border-radius:var(--r-s);padding:6px 10px;background:var(--surface)}}
@@ -1590,9 +1599,20 @@ details.inside .tablewrap{{max-height:420px;overflow-y:auto}}
               SPINEPS live (GPU)</button>
           </div>
         </form>
-        <p class="hint-row">Brain yields tumour sub-regions, a CSF/GM/WM tissue map and a Grad-CAM
-        attention map. Spine yields SLIC region delineation and self-supervised anomaly
-        localisation. Inputs that are not MRI are rejected before any clinical claim is made.</p>
+        <table class="whattab">
+          <tr><th>What you upload</th><th>What comes back</th><th>Steps</th></tr>
+          <tr><td><b>Brain</b> scan</td>
+              <td>Enhancement, tumour sub-regions, CSF/grey/white tissue map, Grad-CAM attention</td>
+              <td>1–7</td></tr>
+          <tr><td><b>Spine — side view</b><br><span class="muted">spine runs down the image as a chain of bones (sagittal)</span></td>
+              <td>All of the above minus tumour, plus canal width, named structures and the narrowest point</td>
+              <td><b>1–9</b></td></tr>
+          <tr><td><b>Spine — cross-section</b><br><span class="muted">round slice through the body (axial)</span></td>
+              <td>Enhancement and region segmentation only. The vertebra model expects a side view and says so instead of guessing</td>
+              <td>1–5</td></tr>
+        </table>
+        <p class="hint-row">Every file in <code>showcase/for_spineps/</code> is a side view and returns
+        all nine steps. Inputs that are not MRI are rejected before any clinical claim is made.</p>
         <div class="quick">
           <a href="/sample?region=brain">Brain sample &middot; with PSNR/SSIM</a>
           <a href="/sample?region=spine">Spine sample &middot; with PSNR/SSIM</a>
