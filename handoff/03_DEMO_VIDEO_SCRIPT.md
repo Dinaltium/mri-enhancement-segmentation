@@ -100,14 +100,18 @@ selected, click **Tumour vs expert**.
 > "Step five segments the spine into coherent regions using superpixel clustering —
 > no labels needed.
 >
-> Step six is the part we're most pleased with. We trained an autoencoder on
-> *healthy* spines only. It has learned what normal looks like, so when you show it a
-> diseased spine it rebuilds a healthy-looking version — and whatever it gets *wrong*
-> is exactly where the abnormality is. That box is placed entirely without labels.
+> Step six is a research view, and it's worth being precise about. We trained an
+> autoencoder on *healthy* spines only, so it rebuilds a healthy-looking version of
+> any scan, and this map shows where the input differs from that.
 >
-> To be clear about what this does and doesn't do: it flags a suspicious region for a
-> radiologist. It does not name the condition — that would need labelled data we're
-> not permitted to use."
+> The obvious hope is that the difference marks the disease. We tested that — and it
+> failed. Across held-out cases the score for healthy spines is actually higher than
+> for diseased ones; the area under the curve is 0.27, worse than guessing. It's
+> tracking texture, not pathology.
+>
+> So we removed the detection claim. This is a visualisation, not a diagnosis. A
+> detector that fires on healthy patients would be worse than having none, and we'd
+> rather show you the negative result than a convincing-looking false positive."
 
 ---
 
@@ -146,8 +150,9 @@ selected, click **Tumour vs expert**.
 ## [5:45–6:00] Close
 
 > "Three things we deliberately don't claim. We report accuracy numbers only where
-> expert annotations exist. The spine model localises, it doesn't diagnose. And the
-> model corrects noise — it never invents anatomy.
+> expert annotations exist. Our spine anomaly detector failed its own validation, so we
+> withdrew it rather than ship it. And the model corrects noise — it never invents
+> anatomy.
 >
 > Every figure comes from a script in the repository and can be re-run. Thank you."
 

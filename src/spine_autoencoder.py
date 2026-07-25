@@ -9,8 +9,16 @@ abnormalities WITHOUT labels, self-supervised:
      It learns to reconstruct what a healthy spine looks like.
   2. Show it a PATHOLOGICAL spine. It reconstructs the healthy-looking version,
      but CANNOT reproduce the lesion it never saw during training.
-  3. The reconstruction ERROR map = |input - reconstruction| therefore LIGHTS UP
-     exactly where the abnormality is (disc herniation, stenosis, lesion).
+  3. The reconstruction ERROR map = |input - reconstruction| should then light up
+     where the abnormality is.
+
+VALIDATION OUTCOME — READ THIS BEFORE USING THE SCORE:
+Step 3 does NOT hold on this dataset. validate_anomaly_detector.py scores held-out
+normal and pathological spines and finds AUC = 0.27 (worse than chance), with the
+distributions completely overlapping and normal spines scoring HIGHER on average.
+The reconstruction error is dominated by image texture and anatomical complexity,
+not by disease. The map is therefore kept only as a visualisation of departure from
+the learned healthy appearance; no detection claim is made and no region is marked.
 
 Key design point: this is a BOTTLENECK autoencoder with NO skip connections —
 skip connections would let it copy the input (lesion included) straight through,
@@ -133,27 +141,20 @@ def anomaly_map(model, img01: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return np.clip(recon, 0, 1), err
 
 
-def overlay_anomaly(img01: np.ndarray, heat: np.ndarray, pct: float = 90.0) -> np.ndarray:
-    """Heatmap over the scan + a box around the single STRONGEST compact
-    anomaly (largest connected component above a high percentile)."""
+def overlay_anomaly(img01: np.ndarray, heat: np.ndarray) -> np.ndarray:
+    """Reconstruction-difference map drawn over the scan.
+
+    IMPORTANT — no bounding box and no "suspected lesion" marker is drawn.
+    Validation (validate_anomaly_detector.py, results/anomaly_validation.json)
+    showed the score does NOT separate pathological from normal spines
+    (AUC 0.27, complete overlap), so marking a region as suspicious would be a
+    false claim. This is a visualisation of where the scan departs from the
+    learned healthy appearance — driven largely by texture and anatomical
+    complexity — and nothing more.
+    """
     base = cv2.cvtColor((np.clip(img01, 0, 1) * 255).astype(np.uint8), cv2.COLOR_GRAY2BGR)
     hm = cv2.applyColorMap((np.clip(heat, 0, 1) * 255).astype(np.uint8), cv2.COLORMAP_JET)
-    out = cv2.addWeighted(base, 0.6, hm, 0.5, 0)
-    fg = heat[img01 > 0.05]
-    if fg.size == 0:
-        return out
-    thr = np.percentile(fg, pct)
-    mask = ((heat > thr) & (img01 > 0.05)).astype(np.uint8)
-    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
-    n, lab, stats, _ = cv2.connectedComponentsWithStats(mask, 8)
-    if n > 1:
-        biggest = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
-        x, y, w, h, area = stats[biggest]
-        if area > 25:
-            cv2.rectangle(out, (x, y), (x + w, y + h), (0, 255, 255), 2)
-            cv2.putText(out, "suspected", (max(0, x - 4), max(12, y - 6)),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 255), 1)
-    return out
+    return cv2.addWeighted(base, 0.6, hm, 0.5, 0)
 
 
 def detect(modality: str, out_dir="outputs/spine_anomaly"):

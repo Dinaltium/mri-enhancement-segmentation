@@ -5,7 +5,7 @@ title, "SAY" is the speaking note, and "IMAGE" names the exact file to upload fr
 the `images/` folder next to this document. Numbers are already final — do not
 change them, they come from measured runs.
 
-Deck length: **14 slides**, ~8 minutes.
+Deck length: **15 slides**, ~8 minutes.
 Tone: confident, plain English. The project's strength is that every claim is measured.
 
 ---
@@ -175,23 +175,51 @@ clinically — is our strongest class at 0.84."
 
 ## Slide 11 — Spine: no annotations allowed
 
-**Three methods, zero labels**
+**Two working methods, zero labels**
 
 | Task | Method | Labels |
 |---|---|---|
 | Enhancement | Self-supervised restoration | none |
 | Region segmentation | SLIC superpixels + clustering | none |
-| **Abnormality localisation** | Autoencoder trained on **healthy spines only** | none |
 
-SAY: "The rules forbid annotations for spine. So we trained an autoencoder on healthy
-spines only. It rebuilds a healthy-looking version of any scan — and whatever it
-gets *wrong* is exactly where the abnormality is."
+SAY: "The rules forbid annotations for spine, so both of these are unsupervised —
+the restoration model trains on the scan against a degraded copy of itself, and the
+region segmentation is superpixel clustering."
+
+IMAGE: `images/spine_slic_compare.png`
+
+---
+
+## Slide 12 — The experiment that didn't work *(keep this slide — it wins trust)*
+
+**We tried autoencoder anomaly detection. We tested it. It failed.**
+
+The idea: train an autoencoder on *healthy* spines only; whatever it cannot
+reconstruct should be the pathology.
+
+We validated it instead of assuming it:
+
+| | Normal spines | Pathological spines |
+|---|---|---|
+| Mean difference score | **0.020** | 0.017 |
+| Range | 0.014 – 0.031 | 0.010 – 0.023 |
+
+**AUC 0.27** — worse than a coin flip. Normal scans score *higher* than diseased ones.
+The score tracks image texture, not disease.
+
+**So we removed the detection claim** and present the map as a visualisation only.
+
+SAY: "This is the slide we're most proud of. The method looked good and produced a
+convincing-looking heat map. We measured whether it actually separates sick from
+healthy spines — and it does not, it's worse than guessing. An unvalidated detector
+that fires on healthy patients is worse than no detector at all, so we pulled the
+claim. The numbers are in the repository."
 
 IMAGE: `images/spine_anomaly.png`
 
 ---
 
-## Slide 12 — One model per sequence beats one model for all
+## Slide 13 — One model per sequence beats one model for all
 
 | Sequence | Pooled model | **Per-sequence (ours)** |
 |---|---|---|
@@ -207,7 +235,7 @@ IMAGE: `images/cmp_modality.png`
 
 ---
 
-## Slide 13 — Efficiency & validation
+## Slide 14 — Efficiency & validation
 
 | Metric | Value |
 |---|---|
@@ -226,7 +254,7 @@ IMAGE: `images/segmentation_curves.png`
 
 ---
 
-## Slide 14 — Summary & honesty
+## Slide 15 — Summary & honesty
 
 **Four measured claims**
 
@@ -234,7 +262,7 @@ IMAGE: `images/cmp_summary.png`
 
 **What we deliberately do NOT claim:**
 - No tumour accuracy numbers on unlabelled data — only on BraTS, where truth exists
-- The spine model localises a suspicious region; it does not name the diagnosis
+- Our spine anomaly detector failed validation (AUC 0.27) — we report that, not a fake result
 - The model corrects noise; it does not invent anatomy (SSIM > 0.9 proves it)
 
 SAY: "We'd rather report a smaller honest number than a large invented one. Every

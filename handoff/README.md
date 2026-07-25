@@ -40,8 +40,9 @@ comes from a script in `src/` and is stored as JSON in `results/`.
 
 1. Accuracy numbers are reported **only where expert annotations exist** (BraTS).
    On unlabelled data we show enhancement metrics and qualitative results, and say so.
-2. The spine model **localises** an abnormal region; it does not name the diagnosis.
-   Naming would need labelled data the rules forbid.
+2. Our spine anomaly detector **failed its own validation** (AUC 0.27 — worse than
+   chance). We report the negative result and removed the claim, rather than shipping
+   a detector that fires on healthy patients.
 3. The model **corrects noise, it does not invent anatomy** — SSIM above 0.9 against
    the true scan is the evidence.
 

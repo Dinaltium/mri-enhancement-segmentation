@@ -106,11 +106,10 @@ while the Dice term optimises region overlap directly.
 For **healthy** subjects, CSF, grey matter and white matter are separated by
 unsupervised Gaussian-mixture clustering on T1 intensity, since no tissue labels
 exist. For **spine**, region segmentation uses SLIC superpixels followed by intensity
-clustering, and abnormality localisation uses an autoencoder trained on **healthy
-spines only**: it reconstructs a healthy-looking version of any input, so the
-reconstruction error localises whatever it has never seen. The autoencoder
-deliberately omits skip connections — they would copy the lesion directly to the
-output and destroy the anomaly signal.
+clustering. We additionally investigated autoencoder-based anomaly detection —
+training on healthy spines only, on the hypothesis that reconstruction error would
+localise pathology — and validated it rather than assuming it worked. It did not: see
+§4.3.
 
 Slice-based 2D processing throughout keeps memory within a 6 GB laptop GPU; the
 published 3D BraTS models document a 16 GB+ requirement.
@@ -169,7 +168,7 @@ spread across folds indicates a consistent model rather than a favourable split.
 (right) on a patient excluded from training. Green edema, red enhancing tumour, blue
 necrotic core.*
 
-### 4.3 Efficiency
+### 4.4 Efficiency
 
 | Metric | Enhancement | Segmentation |
 |---|---|---|
@@ -180,11 +179,30 @@ necrotic core.*
 | Peak GPU memory | 385 MB | 390 MB |
 | GPU utilisation | 84 % | 98 % |
 
+### 4.3 A negative result: autoencoder anomaly detection
+
+The autoencoder reconstructs healthy spinal anatomy convincingly, and its error map is
+visually persuasive. We tested whether the resulting score actually separates diseased
+from healthy spines on held-out cases. It does not:
+
+| | Normal (n=28) | Pathological (n=27) |
+|---|---|---|
+| Mean score | 0.0199 | 0.0167 |
+| Range | 0.0137 – 0.0314 | 0.0101 – 0.0234 |
+
+**AUC = 0.27**, i.e. worse than chance, with completely overlapping distributions and
+no usable operating threshold; normal spines in fact score *higher* than pathological
+ones. The reconstruction error is dominated by image texture and anatomical complexity
+rather than by disease. We therefore removed the detection claim from the system and
+present the map purely as a visualisation. An unvalidated detector that fires on
+healthy patients is more dangerous than no detector at all. Full figures are recorded
+in `results/anomaly_validation.json`.
+
 **[FIGURE 4 — `images/spine_anomaly.png`]**
-*Caption: Self-supervised spine abnormality localisation. Left, the pathological scan;
-centre, the reconstruction produced by an autoencoder trained only on healthy spines;
-right, the resulting error map with the suspected region marked. No annotations were
-used at any point.*
+*Caption: Reconstruction difference against a healthy-only autoencoder. Left, a
+pathological spine; centre, the model's healthy reconstruction; right, the difference
+map. Presented as a visualisation only — validation showed the score does not
+distinguish pathological from normal spines.*
 
 ---
 
@@ -199,9 +217,9 @@ three independent unsupervised and self-supervised methods.
 Three limitations are stated deliberately. First, quantitative segmentation accuracy is
 reported only on BraTS, the sole dataset with expert annotation; on the unlabelled
 hackathon data we report enhancement metrics and qualitative segmentation rather than
-inventing figures. Second, the spine pipeline localises a suspicious region but does not
-name the condition, since distinguishing herniation from stenosis requires labelled
-training data that the rules do not permit. Third, the restoration model corrects noise
+inventing figures. Second, our autoencoder-based spine anomaly detector failed validation (AUC 0.27) and
+the claim was withdrawn; the spine deliverable is therefore restoration and
+unsupervised region segmentation, not lesion detection. Third, the restoration model corrects noise
 and intensity artefacts only; it does not synthesise anatomy, and the SSIM above 0.9
 against the reference scan is the evidence for that claim.
 

@@ -368,24 +368,32 @@ table{{width:100%;border-collapse:collapse;margin-top:12px;font-size:15px}} th,t
     <tr><th>Spine task</th><th>Method</th><th>Annotations used</th></tr>
     <tr><td>Enhancement</td><td>Self-supervised U-Net (the scan is degraded, then restored to itself)</td><td class="good">none</td></tr>
     <tr><td>ROI segmentation</td><td>SLIC superpixels + unsupervised intensity clustering</td><td class="good">none</td></tr>
-    <tr><td>Lesion localisation</td><td>Autoencoder trained on healthy scans only (anomaly detection)</td><td class="good">none</td></tr>
+    <tr><td>Reconstruction-difference view</td><td>Autoencoder trained on healthy scans only — <b>validated and withdrawn as a detector</b></td><td class="good">none</td></tr>
   </table></div>
 
-  <h3>Spine — finding the abnormality without any labels</h3>
-  <div class="simple"><b>The problem:</b> the spine data has <b>no lesion labels</b> and no external data
-  is allowed — so we cannot train a normal "find the herniation" detector. <b>Our solution
-  (self-supervised):</b> train an autoencoder on <b>healthy spines only</b>. It learns what normal looks
-  like. Show it a diseased spine and it rebuilds a <i>healthy-looking</i> version — but it cannot
-  reproduce a lesion it has never seen. Whatever it gets <b>wrong</b> is therefore exactly where the
-  abnormality is.</div>
-  {img(f"{D}/spine_anomaly.png","Left: real pathological spine. Middle: the AI's 'healthy' reconstruction. Right: the difference — the suspected abnormal region, boxed automatically. No labels were used anywhere.")}
+  <h3>Spine — a negative result we are reporting rather than hiding</h3>
+  <div class="simple"><b>The idea:</b> train an autoencoder on <b>healthy spines only</b>, then whatever
+  it cannot reconstruct should be the pathology. The reconstruction is convincing and the error map
+  looks persuasive. <b>We tested whether it actually works</b> — and it does not.
+  <table style="margin-top:8px">
+    <tr><th></th><th>Normal spines (n=28)</th><th>Pathological (n=27)</th></tr>
+    <tr><td>Mean difference score</td><td><b>0.0199</b></td><td>0.0167</td></tr>
+    <tr><td>Range</td><td>0.0137 – 0.0314</td><td>0.0101 – 0.0234</td></tr>
+  </table>
+  <b>AUC 0.27 — worse than a coin flip</b>, with completely overlapping distributions; healthy spines
+  score <i>higher</i> than diseased ones. The error tracks image texture, not disease. We therefore
+  <b>removed the detection claim</b> and show the map as a visualisation only. An unvalidated detector
+  that fires on healthy patients is worse than no detector at all.</div>
+  {img(f"{D}/spine_anomaly.png","Left: a pathological spine. Middle: the healthy-only model's reconstruction. Right: the difference map — presented as a visualisation, with no region marked, because validation showed the score does not separate diseased from healthy spines.")}
   {img(f"{D}/spine_slic_compare.png","ROI segmentation upgraded: pixel k-means (middle) is speckly; our SLIC-superpixel clustering (right) gives coherent disc / vertebra / cord regions.")}
-  <div class="tech"><b>Method:</b> bottleneck convolutional autoencoder (deliberately <b>no skip
-  connections</b> — skips would copy the lesion straight through and hide it), trained on 719 normal
-  spine T2 slices with L1+SSIM. Anomaly score = smoothed |input − reconstruction|, background-masked,
-  median-subtracted so only <i>excess</i> error survives; the largest high-percentile connected
-  component is boxed. <b>Honest limit:</b> it localises a suspicious region for a radiologist — it does
-  not name the diagnosis.</div>
+  <div class="tech"><b>Method:</b> bottleneck convolutional autoencoder (no skip connections — they
+  would copy the input straight through), trained on 719 normal spine T2 slices with L1+SSIM.
+  Difference score = smoothed |input − reconstruction|, background-masked and median-subtracted.
+  <b>Validation:</b> <code>src/validate_anomaly_detector.py</code> scores held-out normal and
+  pathological spines and computes the separation; results in
+  <code>results/anomaly_validation.json</code>. Reporting this negative result is deliberate — the
+  method is widely cited, and showing that it does not transfer to this dataset is a more useful
+  contribution than an unvalidated claim.</div>
   <div class="tech"><b>Brain:</b> 4-modality U-Net (T1+T1c+T2+FLAIR), cross-entropy + soft-Dice loss.
   Metrics: Dice, Jaccard, Hausdorff, ASD, sensitivity, specificity, precision, F1, Relative Volume
   Error. <b>Spine &amp; healthy tissue:</b> unsupervised intensity clustering (no labels available /

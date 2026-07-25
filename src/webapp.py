@@ -449,19 +449,26 @@ def build_pipeline_result(raw: bytes, filename: str, region: str) -> str:
             ae, _ = _cached_ae()
             _recon, heat = anomaly_map(ae, sl)
             score = float(heat.mean())
-            out += _pstep("Step 6 · Anomaly detection (finds the abnormal region)",
+            out += _pstep("Step 6 · Reconstruction difference (research view)",
                           _np_b64(overlay_anomaly(sl, heat), gray=False),
-                          '<div class="verdict v-yes">🔎 <b>Suspected abnormal region flagged</b> '
-                          f'(anomaly score {score:.3f}). Red/box = where this spine deviates most from '
-                          'a healthy one.</div>')
-            note = ('<p class="note"><b>How this works:</b> we trained an autoencoder on <b>normal '
-                    'spines only</b>. It reconstructs a "healthy" version of any scan; where a real '
-                    'lesion (herniation / stenosis / degeneration) exists, it cannot reconstruct it, so '
-                    'the error map lights up exactly there. Fully self-supervised — no labels, which the '
-                    'rules require. It flags a region for the radiologist; it does not name the diagnosis.</p>')
+                          '<div class="verdict v-info"><b>Not a diagnosis.</b> Colour shows where this '
+                          'scan departs most from the model\'s learned healthy appearance '
+                          f'(mean difference {score:.3f}). We validated this score and it does '
+                          '<b>not</b> distinguish diseased from healthy spines, so no region is '
+                          'marked as suspicious.</div>')
+            note = ('<p class="note"><b>What this is, honestly:</b> an autoencoder was trained on '
+                    '<b>normal spines only</b>, so it reconstructs a healthy-looking version of any '
+                    'scan; the difference map shows where the input departs from that. The appealing '
+                    'idea is that the difference would mark pathology. <b>We tested that claim and it '
+                    'failed</b> — across held-out cases the score for normal spines (mean 0.020) is '
+                    'actually higher than for pathological ones (0.017), AUC 0.27, i.e. worse than '
+                    'chance. The difference is driven by image texture and anatomical complexity, not '
+                    'by disease. We therefore report the map as a visualisation only and make no '
+                    'detection claim — an unvalidated detector that fires on healthy patients would be '
+                    'worse than none. Full numbers: <code>results/anomaly_validation.json</code>.</p>')
         except Exception as e:
-            note = (f'<p class="note">ROI shown. (Anomaly model unavailable: {html.escape(str(e))} — '
-                    'run spine_autoencoder.py --train.)</p>')
+            note = (f'<p class="note">ROI shown. (Reconstruction model unavailable: '
+                    f'{html.escape(str(e))} — run <code>src/spine_autoencoder.py --train</code>.)</p>')
     return f'<div class="pipeline">{out}</div>{note}'
 
 

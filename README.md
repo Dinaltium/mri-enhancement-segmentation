@@ -18,6 +18,7 @@ self-supervised abnormality localisation).
 | Restoration vs classical | Ours **SSIM 0.90** vs CLAHE 0.16, HE 0.15, AHE 0.13 — *every classical method scores below the noisy input* |
 | Noise actually removed | Ours **0.0068 → 0.0043**; HE and CLAHE *raise* it to 0.0138 / 0.0106 |
 | Spine per-sequence models | Beat one pooled model on **3/3** sequences (T1 +0.23, T2 +0.21, STIR +0.17 SSIM) |
+| Spine anomaly detector | **Failed validation (AUC 0.27) — reported, not shipped** |
 | Speed | **4.2 ms/image · 236 images/sec**, 7.77 M parameters, 31 MB, 390 MB peak GPU |
 | Cross-validation | 0.59 ± **0.04** Dice over 3 folds — consistent, not lucky |
 
@@ -56,7 +57,7 @@ stage is shown with its own output and measured scores. No internet required.
 → **tumour detection** → CSF/grey/white tissue map → **Grad-CAM** attention.
 
 **Spine — 6 stages:** upload → HE → CLAHE → **U-Net restoration** (the model matching
-the detected sequence) → **SLIC region segmentation** → **anomaly localisation**.
+the detected sequence) → **SLIC region segmentation** → reconstruction-difference view (research only).
 
 Two more views:
 
@@ -166,10 +167,10 @@ under 1 % of pixels and cross-entropy alone would collapse to predicting
 background everywhere. Slice-based 2D processing keeps the memory footprint inside
 a 6 GB laptop GPU.
 
-**Spine uses no annotations at all**, as required: restoration is self-supervised,
-region segmentation is unsupervised SLIC clustering, and abnormality localisation
-trains an autoencoder on *healthy* spines only — it cannot reconstruct a lesion it
-has never seen, so the reconstruction error marks where the abnormality is.
+**Spine uses no annotations at all**, as required: restoration is self-supervised and
+region segmentation is unsupervised SLIC clustering. We also tested autoencoder-based
+anomaly detection (train on healthy spines, treat reconstruction error as pathology)
+and **validated it rather than assuming it worked — it failed**, see limitations.
 
 ---
 
@@ -178,9 +179,12 @@ has never seen, so the reconstruction error marks where the abnormality is.
 - Quantitative segmentation scores are reported **only on BraTS**, where expert
   annotations exist. On the unlabelled hackathon data we report enhancement metrics
   and qualitative segmentation, and say so plainly rather than inventing numbers.
-- The spine pipeline **localises** a suspicious region; it does not name the
-  condition (herniation vs stenosis). Naming requires labelled training data, which
-  the rules do not permit.
+- **Our spine anomaly detector failed validation and the claim was withdrawn.** Scored
+  on held-out cases it gives **AUC 0.27** — worse than chance, with healthy spines
+  scoring *higher* than pathological ones — because the reconstruction error tracks
+  image texture, not disease (`results/anomaly_validation.json`). The map is retained
+  as a visualisation only. An unvalidated detector that fires on healthy patients is
+  worse than no detector at all.
 - The restoration model corrects noise and intensity artefacts. It does not
   invent anatomy — SSIM above 0.9 against the true scan is the evidence for that.
 

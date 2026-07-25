@@ -227,8 +227,8 @@ def spine_anomaly_figure():
     ax[1].imshow(recon, cmap="gray")
     ax[1].set_title("2. AI's 'healthy' reconstruction"); ax[1].axis("off")
     ax[2].imshow(cv2.cvtColor(overlay_anomaly(img, heat), cv2.COLOR_BGR2RGB))
-    ax[2].set_title(f"3. Anomaly map — suspected region\n(score {score:.3f})"); ax[2].axis("off")
-    fig.suptitle("Spine — Self-Supervised Lesion Localisation (no labels used)",
+    ax[2].set_title(f"3. Reconstruction difference\n(mean {score:.3f}) — not a diagnosis"); ax[2].axis("off")
+    fig.suptitle("Spine — reconstruction difference vs a healthy-only model (research view)",
                  fontsize=14, fontweight="bold")
     fig.tight_layout(rect=[0, 0, 1, 0.93])
     fig.savefig(os.path.join(OUT, "spine_anomaly.png"), dpi=125); plt.close(fig)

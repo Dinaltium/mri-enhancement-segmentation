@@ -160,8 +160,9 @@ speed + less memory. **GradScaler** to keep fp16 training stable.
 - **SLIC superpixels** — groups nearby similar pixels into ~250 coherent
   superpixels; we cluster those by mean intensity → connected disc/vertebra/
   cord regions (replaced the speckly per-pixel k-means for spine ROI).
-- **Autoencoder anomaly detection** — train on healthy only; reconstruction
-  error localises the abnormality. Self-supervised, needs no labels.
+- **Autoencoder anomaly detection** — train on healthy only, treat reconstruction
+  error as pathology. Self-supervised. **We tested this and it failed on our data
+  (AUC 0.27, worse than chance); claim withdrawn.**
 - **Otsu multi-threshold** — alternative unsupervised split.
 - **Grad-CAM (Seg-Grad-CAM)** — attention heatmap, gradient of tumour score
   w.r.t. decoder features, restricted to the predicted tumour region.
@@ -238,14 +239,16 @@ speed + less memory. **GradScaler** to keep fp16 training stable.
 - **Does one model fit all sub-modalities?** No — we proved it. Modality-specific
   spine models beat the pooled model on **3/3** sequences (T1 0.598→0.827,
   T2 0.594→0.802, STIR 0.540→0.714 SSIM, same test slices).
-- **How do you find the spine lesion without labels?** We train an autoencoder
-  on **healthy spines only**; it can't reconstruct a lesion it never saw, so the
-  reconstruction-error map localises the abnormality. Self-supervised.
+- **How do you find the spine lesion without labels?** We tried exactly that — an
+  autoencoder trained on **healthy spines only**, treating reconstruction error as
+  pathology. **We validated it and it failed: AUC 0.27**, worse than chance, healthy
+  spines scoring higher than diseased ones. We withdrew the claim and report the
+  negative result. Spine deliverables are restoration + unsupervised region
+  segmentation.
 - **Why no skip connections in that autoencoder?** Skips would copy the input
   (lesion included) straight to the output and erase the anomaly signal.
-- **Does it diagnose the spine condition?** No — it flags a suspicious region
-  for a radiologist. Naming "herniation vs stenosis" needs labels we're not
-  allowed to have.
+- **Does it diagnose the spine condition?** No, and it does not even flag one — the
+  detector failed validation, so the map is shown purely as a visualisation.
 - **How avoid erasing tumour?** Detect on the original scan; verified enhancement
   barely changes Dice.
 - **How prevent false positives?** Non-MRI images rejected (dark-corner check);
