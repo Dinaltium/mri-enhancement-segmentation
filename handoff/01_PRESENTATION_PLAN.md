@@ -5,7 +5,7 @@ title, "SAY" is the speaking note, and "IMAGE" names the exact file to upload fr
 the `images/` folder next to this document. Numbers are already final — do not
 change them, they come from measured runs.
 
-Deck length: **15 slides**, ~8 minutes.
+Deck length: **16 slides**, ~8 minutes.
 Tone: confident, plain English. The project's strength is that every claim is measured.
 
 ---
@@ -223,7 +223,40 @@ IMAGE: `images/spine_anomaly.png`
 
 ---
 
-## Slide 13 — One model per sequence beats one model for all
+## Slide 13 — Per-vertebra segmentation, and why we use a pretrained model
+
+**The output the brief asks for is supervised by nature**
+
+Naming *degenerative disc*, *herniation* or *stenosis* requires labelled examples.
+We have **20 spine cases, zero annotations, no external training data**.
+No model we train can produce that — it is a property of the problem, not a lack of effort.
+
+**We proved it before reaching for help.** Four annotation-free methods, all measured:
+
+| Method | Outcome |
+|---|---|
+| k-means / SLIC clustering | groups brightness — cannot separate adjacent vertebrae |
+| Self-supervised CNN (ours) | resolves structure well, but semantic regions not instances |
+| Autoencoder anomaly detection | **validated and failed — AUC 0.27**, withdrawn |
+| Periodicity vertebra detection | canal reliable (91/92), vertebra step failed — not shipped |
+
+**So, with the organisers' approval, we use SPINEPS** (European Radiology 2025,
+Apache-2.0) for this one output — Dice **0.92** vertebrae, validated on 1,600+ subjects.
+We supply it no annotations, we do not train it, and we claim none of its accuracy.
+
+SAY: "We want to be completely transparent about this slide. Naming a herniated disc is
+a supervised problem — you need labelled examples, and we have twenty unlabelled cases
+and no external data. So we tested four annotation-free methods properly, and reported
+that one of them failed outright. For per-vertebra instances specifically we use a
+published, peer-reviewed model, with the organisers' approval, and we label it as
+pretrained everywhere it appears. Using a model with quantified accuracy is also the
+safer clinical choice — an under-constrained model would be confidently wrong."
+
+IMAGE: `images/spine_method_comparison.png`
+
+---
+
+## Slide 14 — One model per sequence beats one model for all
 
 | Sequence | Pooled model | **Per-sequence (ours)** |
 |---|---|---|
@@ -239,7 +272,7 @@ IMAGE: `images/cmp_modality.png`
 
 ---
 
-## Slide 14 — Efficiency & validation
+## Slide 15 — Efficiency & validation
 
 | Metric | Value |
 |---|---|
@@ -258,13 +291,14 @@ IMAGE: `images/segmentation_curves.png`
 
 ---
 
-## Slide 15 — Summary & honesty
+## Slide 16 — Summary & honesty
 
 **Four measured claims**
 
 IMAGE: `images/cmp_summary.png`
 
 **What we deliberately do NOT claim:**
+- No credit for SPINEPS's accuracy — it is a pretrained model, labelled as such throughout
 - No tumour accuracy numbers on unlabelled data — only on BraTS, where truth exists
 - Our spine anomaly detector failed validation (AUC 0.27) — we report that, not a fake result
 - The model corrects noise; it does not invent anatomy (SSIM > 0.9 proves it)

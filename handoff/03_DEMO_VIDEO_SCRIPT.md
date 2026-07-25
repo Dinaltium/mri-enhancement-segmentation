@@ -1,6 +1,6 @@
 # Demo video script
 
-**Target length: 5–6 minutes.** Screen recording with voice-over. OBS, the Xbox Game
+**Target length: 6 minutes.** Screen recording with voice-over. OBS, the Xbox Game
 Bar (`Win + G`), or any screen recorder works.
 
 **Before you record**
@@ -115,7 +115,37 @@ selected, click **Tumour vs expert**.
 
 ---
 
-## [4:15–5:00] Inside the model
+## [4:15–4:50] Per-vertebra segmentation — and being straight about the pretrained model
+
+**Show:** the spine method comparison figure (in `demo_page.html`), then the SPINEPS
+per-vertebra overlay.
+
+> "One more thing on spine, and we want to be completely transparent about it.
+>
+> The brief asks us to delineate degenerative disc, herniation and stenosis. Those are
+> named diagnoses — naming them is a supervised problem. You need labelled examples, and
+> we have twenty spine cases with no annotations and no external data permitted. So no
+> model we train can produce that output. That's a property of the problem, not a lack
+> of effort on our part.
+>
+> We proved that before reaching for outside help. Four annotation-free methods, all
+> measured: clustering, our own self-supervised network, an autoencoder detector that we
+> validated and that failed outright, and a periodicity-based vertebra detector that
+> didn't hold up either.
+>
+> So for per-vertebra instances specifically — and only that — we use SPINEPS, a
+> peer-reviewed published model, with the organisers' approval. Dice of 0.92 on
+> vertebrae, validated on over sixteen hundred subjects. We give it no annotations, we
+> don't train it, and we claim none of its accuracy as ours. It's labelled as a
+> pretrained model everywhere it appears.
+>
+> Using a model with quantified accuracy is also the safer clinical call. An
+> under-constrained model we forced to produce vertebrae would be confidently wrong,
+> and confidently wrong is the worst outcome in medical imaging."
+
+---
+
+## [4:50–5:20] Inside the model
 
 **Do:** click **Inside the model** in the top bar.
 
@@ -133,7 +163,7 @@ selected, click **Tumour vs expert**.
 
 ---
 
-## [5:00–5:45] Results summary
+## [5:20–5:50] Results summary
 
 **Do:** switch to the `demo_page.html` tab, scroll to the comparison charts.
 
@@ -147,11 +177,12 @@ selected, click **Tumour vs expert**.
 
 ---
 
-## [5:45–6:00] Close
+## [5:50–6:10] Close
 
-> "Three things we deliberately don't claim. We report accuracy numbers only where
-> expert annotations exist. Our spine anomaly detector failed its own validation, so we
-> withdrew it rather than ship it. And the model corrects noise — it never invents
+> "Four things we deliberately don't claim. We report accuracy numbers only where expert
+> annotations exist. Our spine anomaly detector failed its own validation, so we withdrew
+> it rather than ship it. We take no credit for the pretrained model's accuracy — it's
+> labelled as pretrained throughout. And our model corrects noise; it never invents
 > anatomy.
 >
 > Every figure comes from a script in the repository and can be re-run. Thank you."

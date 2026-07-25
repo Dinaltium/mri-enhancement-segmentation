@@ -105,11 +105,33 @@ while the Dice term optimises region overlap directly.
 
 For **healthy** subjects, CSF, grey matter and white matter are separated by
 unsupervised Gaussian-mixture clustering on T1 intensity, since no tissue labels
-exist. For **spine**, region segmentation uses SLIC superpixels followed by intensity
-clustering. We additionally investigated autoencoder-based anomaly detection —
-training on healthy spines only, on the hypothesis that reconstruction error would
-localise pathology — and validated it rather than assuming it worked. It did not: see
-§4.3.
+exist. For **spine**, we implemented and measured a progression of annotation-free methods:
+intensity k-means, SLIC superpixels, and finally a **self-supervised CNN**
+(differentiable feature clustering) optimised on each scan using the image's own
+structure as supervision. We additionally investigated autoencoder-based anomaly
+detection and validated it rather than assuming it worked — it did not (§4.3).
+
+### 3.4 Use of a pretrained model for per-vertebra instances
+
+The task additionally asks for degenerative disc, herniation and stenosis as regions of
+interest. These are *named clinical entities*, and naming them is inherently supervised:
+a model can only output "herniated disc" if it has seen examples labelled as such. With
+no annotations, no external training data and 20 spine cases, that target cannot be
+learned from the supplied data by any model we train — a property of the problem as
+specified, not a shortfall of effort. Our measured results above establish this
+empirically: annotation-free methods recover spinal *structure*, but not per-vertebra
+*instances*.
+
+With the organisers' approval we therefore use **SPINEPS** (Möller et al., European
+Radiology 2025, Apache-2.0) for this one output. It is the first publicly available
+whole-spine model for sagittal T2w MRI, producing semantic and instance masks for 14
+structures, with published accuracy of Dice 0.92 (vertebrae), 0.967 (discs) and 0.958
+(spinal canal), validated on over 1,600 subjects. We supply it no annotations and do not
+train it. Using a peer-reviewed model with quantified accuracy is also the clinically
+responsible choice: a per-vertebra segmentation invented by an under-constrained model
+would be confidently wrong. Its provenance — pretrained on external data — is labelled
+wherever it appears, and we claim no credit for its accuracy. Full reasoning:
+`docs/PRETRAINED_MODEL_JUSTIFICATION.md`.
 
 Slice-based 2D processing throughout keeps memory within a 6 GB laptop GPU; the
 published 3D BraTS models document a 16 GB+ requirement.
@@ -218,8 +240,10 @@ Three limitations are stated deliberately. First, quantitative segmentation accu
 reported only on BraTS, the sole dataset with expert annotation; on the unlabelled
 hackathon data we report enhancement metrics and qualitative segmentation rather than
 inventing figures. Second, our autoencoder-based spine anomaly detector failed validation (AUC 0.27) and
-the claim was withdrawn; the spine deliverable is therefore restoration and
-unsupervised region segmentation, not lesion detection. Third, the restoration model corrects noise
+the claim was withdrawn. Our own spine contributions are therefore restoration,
+self-supervised region segmentation and canal morphometry; per-vertebra instance
+segmentation is provided by a pretrained model (§3.4), clearly attributed, because that
+output cannot be learned from unlabelled data. Third, the restoration model corrects noise
 and intensity artefacts only; it does not synthesise anatomy, and the SSIM above 0.9
 against the reference scan is the evidence for that claim.
 
