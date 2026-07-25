@@ -165,6 +165,107 @@ DISTINCT = np.array([
 ], dtype=np.uint8)
 
 
+def vertebra_instances(img01: np.ndarray, labels: np.ndarray,
+                       min_area: int = 120, max_area_frac: float = 0.09):
+    """Split the vertebral column into INDIVIDUAL vertebrae.
+
+    The reference literature presents spine segmentation as per-vertebra
+    instances, not a single "bone" region — so after the network has produced
+    semantic classes we separate each vertebral body as its own object.
+
+    No labels are needed: vertebrae are a repeating chain of similarly-sized
+    blocks, so for each semantic class we take its connected components and
+    score the class on how well its components look like such a chain
+    (enough of them, comparable areas, arranged along one axis). The
+    best-scoring class is the vertebral column; its components are the
+    individual vertebrae.
+    """
+    import cv2
+    h, w = labels.shape
+    total_fg = max(int((labels >= 0).sum()), 1)
+    best = {"score": -1.0, "instances": None, "n": 0}
+
+    # Geometric prior: vertebral bodies form a chain running parallel to the
+    # spinal canal, close to it. Without this constraint the scoring happily
+    # picks a chain of soft-tissue fragments elsewhere in the image, which is
+    # exactly what it did in testing. The canal detector is reliable (91/92),
+    # so use it to restrict where vertebrae may be.
+    canal_axis = canal_centre = None
+    try:
+        from spine_measurements import canal_width_profile
+        _prof, cinfo = canal_width_profile(img01)
+        if cinfo is not None:
+            canal_axis, canal_centre = cinfo["axis"], cinfo["centre"]
+            canal_perp = cinfo["perp"]
+    except Exception:
+        canal_axis = None
+
+    def near_canal(cx, cy):
+        """Within a plausible perpendicular distance of the canal line."""
+        if canal_axis is None:
+            return True
+        d = np.array([cx, cy], dtype=np.float32) - canal_centre
+        return abs(float(d @ canal_perp)) < 0.22 * max(h, w)
+
+    for cls in [u for u in np.unique(labels) if u >= 0]:
+        m = (labels == cls).astype(np.uint8)
+        m = cv2.morphologyEx(m, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+        n, lab, stats, cents = cv2.connectedComponentsWithStats(m, 8)
+        keep = [i for i in range(1, n)
+                if stats[i, cv2.CC_STAT_AREA] >= min_area
+                and stats[i, cv2.CC_STAT_AREA] <= max_area_frac * total_fg
+                and near_canal(cents[i][0], cents[i][1])]
+        if len(keep) < 4:                       # a spine shows several vertebrae
+            continue
+        areas = np.array([stats[i, cv2.CC_STAT_AREA] for i in keep], dtype=np.float32)
+        cen = np.array([cents[i] for i in keep], dtype=np.float32)
+
+        # vertebrae are similar in size ...
+        uniformity = 1.0 / (1.0 + float(areas.std() / (areas.mean() + 1e-6)))
+        # ... and strung out along a single direction
+        c = cen - cen.mean(axis=0)
+        evals = np.linalg.eigvalsh(np.cov(c.T) + np.eye(2) * 1e-6)
+        linearity = float(evals.max() / (evals.sum() + 1e-6))
+        score = uniformity * linearity * min(len(keep), 12)
+
+        if score > best["score"]:
+            inst = np.zeros_like(labels)
+            # number them in order along the chain, so the labels read head-to-tail
+            axis_pos = c @ np.linalg.eigh(np.cov(c.T) + np.eye(2) * 1e-6)[1][:, -1]
+            order = np.argsort(axis_pos)
+            for rank, oi in enumerate(order, start=1):
+                inst[lab == keep[oi]] = rank
+            best = {"score": score, "instances": inst, "n": len(keep),
+                    "uniformity": round(uniformity, 3), "linearity": round(linearity, 3)}
+
+    if best["instances"] is None:
+        return np.zeros_like(labels), {"n_vertebrae": 0}
+    return best["instances"], {"n_vertebrae": best["n"],
+                               "size_uniformity": best.get("uniformity"),
+                               "alignment": best.get("linearity")}
+
+
+def overlay_instances(img01: np.ndarray, inst: np.ndarray) -> np.ndarray:
+    """Each vertebra in its own colour, numbered — the presentation used in the
+    reference spine-segmentation literature."""
+    import cv2
+    base = cv2.cvtColor((np.clip(img01, 0, 1) * 255).astype(np.uint8), cv2.COLOR_GRAY2BGR)
+    col = np.zeros_like(base)
+    ids = [u for u in np.unique(inst) if u > 0]
+    for k, u in enumerate(ids):
+        col[inst == u] = DISTINCT[k % len(DISTINCT)][::-1]
+    out = cv2.addWeighted(base, 1.0, col, 0.5, 0)
+    for k, u in enumerate(ids):
+        ys, xs = np.nonzero(inst == u)
+        if xs.size:
+            cv2.putText(out, str(k + 1), (int(xs.mean()) - 4, int(ys.mean()) + 4),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.34, (255, 255, 255), 1, cv2.LINE_AA)
+    return out
+
+
+
+
+
 def colorize(labels: np.ndarray) -> np.ndarray:
     """BGR colour map, one distinct colour per discovered structure."""
     import cv2

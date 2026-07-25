@@ -139,6 +139,39 @@ def _fig_to_b64(fig):
     return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
 
 
+def slices_from_upload(raw: bytes, filename: str, n: int = 5) -> list:
+    """Several evenly-spaced slices around the middle of an uploaded volume.
+
+    Single-slice measurements are noisy: on one normal spine the canal
+    narrowing ratio ranged 0.29-0.66 across neighbouring slices. The validation
+    protocol used a per-case median over several slices, so the demo must do
+    the same or it reports a number the validation does not support.
+    """
+    fn = filename.lower()
+    if not (fn.endswith(".nii") or fn.endswith(".nii.gz")):
+        one = slice_from_upload(raw, filename)
+        return [one] if one is not None else []
+    tmp = os.path.join(SCRATCH, "multi_" + str(threading.get_ident()) +
+                       (".nii.gz" if fn.endswith(".gz") else ".nii"))
+    try:
+        with open(tmp, "wb") as f:
+            f.write(raw)
+        from enhancement_dataset import extract_training_slices
+        sl = extract_training_slices(load_volume(tmp))
+    except Exception:
+        return []
+    finally:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+    if not sl:
+        return []
+    mid = len(sl) // 2
+    lo = max(0, mid - n // 2)
+    return sl[lo:lo + n]
+
+
 def slice_from_upload(raw: bytes, filename: str) -> np.ndarray | None:
     """Turn an uploaded file (nifti or image) into a normalized [0,1] slice."""
     fn = filename.lower()
@@ -331,20 +364,37 @@ def _np_b64(img, gray=True):
     return "data:image/png;base64," + base64.b64encode(buf.tobytes()).decode()
 
 
-def looks_like_mri(sl: np.ndarray) -> bool:
-    """Reject non-MRI images (photos etc.) while accepting real MRI scans.
-    MRIs sit on a black background — their 4 CORNERS are dark (air = no signal),
-    even when scanner text dots the edges. A photo of a person has a lit
-    background, so its corners are bright. We check corners (robust to edge
-    text) plus that a real dark region exists. Lenient on purpose: better to
-    accept an odd scan than reject a real MRI."""
-    h, w = sl.shape
-    cs = max(6, h // 18)
-    corners = [sl[:cs, :cs].mean(), sl[:cs, -cs:].mean(),
-               sl[-cs:, :cs].mean(), sl[-cs:, -cs:].mean()]
-    dark_corners = sum(m < 0.22 for m in corners)
-    dark_frac = float((sl < 0.12).mean())
-    return dark_corners >= 3 and dark_frac > 0.12
+def looks_like_mri(sl: np.ndarray, filename: str = "", raw: bytes = None) -> bool:
+    """Guard against running medical analysis on a photograph.
+
+    Key point: a NIfTI file (.nii/.nii.gz) IS medical imaging — it is the
+    neuroimaging volume format and nothing else is stored in it. So it is
+    accepted unconditionally. An earlier version applied a brightness heuristic
+    to every input and wrongly rejected 6 of 16 genuine scans, because tightly
+    cropped or zoomed MRIs fill the frame and have no dark corners.
+
+    The heuristic is therefore applied ONLY to ordinary images (png/jpg), where
+    a photograph really is a possibility. There the strongest signal is colour:
+    MRI is greyscale, photographs are not.
+    """
+    fn = (filename or "").lower()
+    if fn.endswith(".nii") or fn.endswith(".nii.gz"):
+        return True
+
+    # colour check on the original bytes — a saturated image is a photo
+    if raw:
+        try:
+            arr = cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)
+            if arr is not None and arr.ndim == 3:
+                hsv = cv2.cvtColor(arr, cv2.COLOR_BGR2HSV)
+                if float(hsv[:, :, 1].mean()) > 40.0:      # meaningfully coloured
+                    return False
+        except Exception:
+            pass
+
+    # greyscale image: require some genuinely dark background, which a lit
+    # photographic scene almost never has
+    return float((sl < 0.12).mean()) > 0.10
 
 
 def _seg_detect(sl: np.ndarray):
@@ -376,7 +426,7 @@ def build_pipeline_result(raw: bytes, filename: str, region: str) -> str:
     sl = slice_from_upload(raw, filename)
     if sl is None:
         return '<p class="note">Could not read that file. Use .nii/.nii.gz or an image.</p>'
-    if not looks_like_mri(sl):
+    if not looks_like_mri(sl, filename, raw):
         return ('<div class="verdict v-yes">⚠️ This does not look like an MRI scan.</div>'
                 '<div class="explain">Real MRI scans have the tissue inside a dark (black) border, '
                 'because the air around the body gives no signal. This image does not — so it is very '
@@ -448,7 +498,16 @@ def build_pipeline_result(raw: bytes, filename: str, region: str) -> str:
         try:
             from spine_measurements import measure, overlay_canal, profile_plot
             m = measure(sl)
-            s = m["summary"]
+            s = dict(m["summary"]) if m["summary"] else {}
+            # aggregate the narrowing ratio over several slices, matching the
+            # protocol the validation used — a single slice is too noisy to quote
+            n_agg = 1
+            if s:
+                others = [measure(o)["summary"] for o in slices_from_upload(raw, filename, 5)]
+                ratios = [o["narrowing_ratio"] for o in others if o]
+                if len(ratios) >= 3:
+                    s["narrowing_ratio"] = round(float(np.median(ratios)), 3)
+                    n_agg = len(ratios)
             if s:
                 out += _pstep("Step 6 · Spinal canal delineation",
                               _np_b64(overlay_canal(sl, m["info"]), gray=False),
@@ -461,7 +520,8 @@ def build_pipeline_result(raw: bytes, filename: str, region: str) -> str:
                               f'<div class="verdict v-info"><b>Measurement, not a diagnosis.</b> '
                               f'Median width <b>{s["median_width_px"]} px</b>, narrowest point '
                               f'<b>{s["min_width_px"]} px</b>, narrowing ratio '
-                              f'<b>{s["narrowing_ratio"]}</b> (narrowest ÷ typical).</div>')
+                              f'<b>{s["narrowing_ratio"]}</b> (narrowest ÷ typical, '
+                              f'median over {n_agg} slice(s)).</div>')
                 note = ('<p class="note"><b>How the segmentation works:</b> a small convolutional '
                         'network is optimised directly on this scan (differentiable feature '
                         'clustering, Kanezaki 2018). Its supervision comes from the image itself — '
