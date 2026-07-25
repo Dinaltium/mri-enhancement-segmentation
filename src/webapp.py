@@ -786,9 +786,13 @@ button:disabled{{opacity:.45;cursor:not-allowed}}
 .note b{{color:var(--ink);font-weight:600}}
 
 /* findings — colour carries meaning only */
-.verdict{{display:flex;align-items:flex-start;gap:9px;font-size:0.8125rem;font-weight:600;
-  padding:10px 12px;border-radius:var(--r-s);margin:10px 0;border:1px solid var(--line)}}
-.verdict::before{{content:"";flex:none;width:8px;height:8px;border-radius:50%;margin-top:5px}}
+/* block, not flex — flex would turn every inline <b> into its own column */
+.verdict{{position:relative;display:block;font-size:0.8125rem;font-weight:600;line-height:1.5;
+  padding:10px 12px 10px 27px;border-radius:var(--r-s);margin:10px 0;
+  border:1px solid var(--line)}}
+.verdict::before{{content:"";position:absolute;left:11px;top:15px;width:8px;height:8px;
+  border-radius:50%}}
+.verdict b{{font-weight:700}}
 .v-yes{{background:var(--neg-bg);color:var(--neg);border-color:oklch(0.86 0.06 27)}}
 .v-yes::before{{background:var(--neg)}}
 .v-ok{{background:var(--pos-bg);color:var(--pos);border-color:oklch(0.87 0.05 155)}}
