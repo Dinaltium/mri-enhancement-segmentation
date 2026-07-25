@@ -1,0 +1,27 @@
+{
+  "method": "3-fold cross-validation, brain segmentation (12 cases, 12 epochs/fold)",
+  "per_fold_mean_tumor_dice": [
+    0.5783,
+    0.3007,
+    0.2544
+  ],
+  "cv_accuracy_mean_dice": 0.3778,
+  "cv_accuracy_std_dice": 0.143,
+  "per_fold_per_class": [
+    {
+      "necrotic_non_enhancing": 0.3535247543642087,
+      "edema": 0.748889784420673,
+      "enhancing": 0.6325508434928585
+    },
+    {
+      "necrotic_non_enhancing": 0.0005956686380462068,
+      "edema": 0.6248117302234457,
+      "enhancing": 0.27679917212211197
+    },
+    {
+      "necrotic_non_enhancing": 0.0,
+      "edema": 0.5164379383958524,
+      "enhancing": 0.24675129879869642
+    }
+  ]
+}

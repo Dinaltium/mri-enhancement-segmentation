@@ -1,0 +1,48 @@
+{
+  "cuda": {
+    "device_name": "NVIDIA GeForce RTX 4050 Laptop GPU",
+    "EnhancementUNet": {
+      "params": 7765409,
+      "model_size_mb": 31.06,
+      "batch_size": 8,
+      "latency_ms_per_image_mean": 4.235267083326259,
+      "latency_ms_per_image_std": 0.04877954323178153,
+      "throughput_images_per_sec": 236.11261824239625,
+      "peak_gpu_mem_mb": 384.9,
+      "runs": 30
+    },
+    "SegmentationUNet": {
+      "params": 7766372,
+      "model_size_mb": 31.07,
+      "batch_size": 8,
+      "latency_ms_per_image_mean": 4.243933749986202,
+      "latency_ms_per_image_std": 0.049170262132398106,
+      "throughput_images_per_sec": 235.6304454571778,
+      "peak_gpu_mem_mb": 389.8,
+      "runs": 30
+    }
+  },
+  "cpu": {
+    "device_name": "CPU",
+    "EnhancementUNet": {
+      "params": 7765409,
+      "model_size_mb": 31.06,
+      "batch_size": 8,
+      "latency_ms_per_image_mean": 49.251247916655906,
+      "latency_ms_per_image_std": 0.7805731576257565,
+      "throughput_images_per_sec": 20.304054055487548,
+      "peak_gpu_mem_mb": null,
+      "runs": 30
+    },
+    "SegmentationUNet": {
+      "params": 7766372,
+      "model_size_mb": 31.07,
+      "batch_size": 8,
+      "latency_ms_per_image_mean": 54.23418124998989,
+      "latency_ms_per_image_std": 5.7564287869161435,
+      "throughput_images_per_sec": 18.438556219564695,
+      "peak_gpu_mem_mb": null,
+      "runs": 30
+    }
+  }
+}
