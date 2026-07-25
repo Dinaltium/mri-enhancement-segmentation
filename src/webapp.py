@@ -1547,7 +1547,21 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Set-Cookie",
                              f"region={set_region}; Path=/; Max-Age=31536000; SameSite=Lax")
         self.end_headers()
-        self.wfile.write(body.encode("utf-8"))
+        try:
+            self.wfile.write(body.encode("utf-8"))
+        except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
+            # The browser hung up before we finished writing — the user
+            # navigated away, hit stop, or got bored of a slow request. Nothing
+            # is wrong with the server, so don't dump a traceback that looks
+            # like a crash in front of an audience.
+            pass
+
+    def handle_one_request(self):
+        """Same reason as above: a client disconnect is not a server error."""
+        try:
+            super().handle_one_request()
+        except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
+            self.close_connection = True
 
     def _region(self):
         """Anatomy remembered from this browser's cookie, defaulting to brain."""

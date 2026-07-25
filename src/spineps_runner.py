@@ -85,6 +85,19 @@ def run(nifti_path: str, out_dir: str = None, timeout: int = 1800) -> dict:
             "error": None if ok else "no mask produced — see stderr"}
 
 
+# What each value in the SPINEPS semantic mask means (TPTBox vert_constants).
+# These are structure TYPES -- distinct from the instance mask's per-vertebra
+# ID numbers, which say "separate bone", not "which structure".
+SPINEPS_LABELS_HELP = {
+    41: "Arcus vertebrae (vertebral arch)", 42: "Spinous process",
+    43: "Costal process, left", 44: "Costal process, right",
+    45: "Superior articular process, left", 46: "Superior articular process, right",
+    47: "Inferior articular process, left", 48: "Inferior articular process, right",
+    49: "Vertebral body (corpus)", 60: "Spinal cord", 61: "Spinal canal",
+    62: "Endplate", 100: "Intervertebral disc",
+}
+
+
 def run_semantic_live(nifti_path: str, work_root: str = "outputs/spineps/live",
                       timeout: int = 300, key: str = None) -> dict:
     """Run ONLY the SPINEPS semantic phase, on the GPU, on an uploaded scan.
@@ -134,8 +147,13 @@ def run_semantic_live(nifti_path: str, work_root: str = "outputs/spineps/live",
             f"sys.argv=['spineps','sample','-i',r'{local}',"
             "'-model_semantic','t2w','-model_instance','instance']\n"
             "entry_point()")
+    # Log to a FILE, never to subprocess.PIPE. SPINEPS is very chatty (nnU-Net
+    # progress bars); with a pipe nobody drains, the 64 KB OS buffer fills and
+    # the child blocks forever on write — which looks exactly like the model
+    # hanging, and cost us every run timing out at 300 s.
+    logf = open(os.path.join(work, "spineps.log"), "wb")
     proc = subprocess.Popen([SPINEPS_PY, "-u", "-c", code], env=env,
-                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                            stdout=logf, stderr=subprocess.STDOUT)
     t0 = time.time()
     found = None
     try:
@@ -155,6 +173,10 @@ def run_semantic_live(nifti_path: str, work_root: str = "outputs/spineps/live",
             proc.kill()
         try:
             proc.wait(timeout=10)
+        except Exception:
+            pass
+        try:
+            logf.close()
         except Exception:
             pass
 
