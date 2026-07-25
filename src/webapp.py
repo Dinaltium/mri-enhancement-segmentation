@@ -465,6 +465,100 @@ def build_pipeline_result(raw: bytes, filename: str, region: str) -> str:
     return f'<div class="pipeline">{out}</div>{note}'
 
 
+def build_model_page() -> str:
+    """White-box view: every layer, shape and parameter count, plus the real
+    intermediate feature maps produced by a forward pass on an actual scan."""
+    from model_inspect import (enhancement_report, segmentation_report, summarise,
+                               featuremap_grid, ARCH_NOTES)
+
+    # a genuine slice so the feature maps show real anatomy, not noise
+    sample = None
+    try:
+        cases = list_tumor_cases()
+        if cases:
+            cdir = CASE_INDEX[cases[0]]
+            name = os.path.basename(cdir)
+            vol = normalize_volume(load_volume(os.path.join(cdir, f"{name}_flair.nii")))
+            z = vol.shape[2] // 2
+            sample = np.clip(cv2.resize(vol[:, :, z], (IMG_SIZE, IMG_SIZE)), 0, 1)
+    except Exception:
+        sample = None
+
+    enh = enhancement_report(sample)
+    seg = segmentation_report()
+    rows = summarise(enh["rows"])
+
+    # ---- headline facts -------------------------------------------------
+    convs = sum(1 for r in rows if r["op"] == "Conv2d")
+    out = ['<div class="mstats">'
+           f'<div><b>{enh["total_params"]:,}</b><span>learned parameters (enhancement)</span></div>'
+           f'<div><b>{seg["total_params"]:,}</b><span>learned parameters (segmentation)</span></div>'
+           f'<div><b>{len(rows)}</b><span>operations per forward pass</span></div>'
+           f'<div><b>{convs}</b><span>convolution layers</span></div>'
+           '</div>']
+
+    # ---- what each stage actually computes, with real feature maps ------
+    out.append('<h3 class="msub">What the network computes, stage by stage</h3>')
+    out.append('<p class="note">Each strip below shows the six most active feature maps at that '
+               'stage, captured from a real forward pass on the scan shown first. Early stages '
+               'respond to edges; deeper stages respond to whole regions; the decoder rebuilds '
+               'full resolution from that understanding.</p>')
+    if sample is not None:
+        out.append(f'<div class="mstage"><h4>Input slice</h4>'
+                   f'<img class="result" src="{_np_b64(sample)}" alt="input slice"/></div>')
+    for label, act in enh["stages"].items():
+        grid = featuremap_grid(act)
+        if grid is None:
+            continue
+        c, h, w = act.shape[1], act.shape[2], act.shape[3]
+        out.append(
+            f'<div class="mstage"><h4>{html.escape(label)}'
+            f'<em>{c} channels · {h}x{w}</em></h4>'
+            f'<img class="result strip" src="{_np_b64(grid)}" alt="{html.escape(label)}"/></div>')
+
+    # ---- full layer table ------------------------------------------------
+    out.append('<h3 class="msub">Every operation, in execution order</h3>')
+    out.append('<div class="tablewrap"><table class="mtable"><thead><tr>'
+               '<th>#</th><th>Layer</th><th>Operation</th><th>Output shape</th>'
+               '<th>Parameters</th><th>What it does</th></tr></thead><tbody>')
+    for i, r in enumerate(rows, 1):
+        note = ARCH_NOTES.get(r["op"], "")
+        out.append(f'<tr><td class="num">{i}</td><td class="mono">{r["layer"]}</td>'
+                   f'<td>{r["op"]}</td><td class="mono">{r["shape"]}</td>'
+                   f'<td class="num mono">{r["params"]}</td><td class="dim">{note}</td></tr>')
+    out.append('</tbody></table></div>')
+
+    # ---- the maths -------------------------------------------------------
+    out.append('''
+    <h3 class="msub">The objective being minimised</h3>
+    <div class="mmath">
+      <div>
+        <h4>Enhancement</h4>
+        <code>L = |y - ŷ|₁ + (1 - SSIM(y, ŷ))</code>
+        <p class="note">The first term drives every pixel towards the clean reference. The second
+        preserves <b>structure</b> — edges and texture — so the result is not merely numerically
+        close but visually faithful. Optimiser: Adam, learning rate 1e-3, mixed precision.</p>
+      </div>
+      <div>
+        <h4>Segmentation</h4>
+        <code>L = CrossEntropy(y, ŷ) + (1 - Dice(y, ŷ))</code>
+        <p class="note">Tumour classes occupy under 1% of pixels, so cross-entropy alone would score
+        99% by predicting "background" everywhere. The Dice term optimises region <b>overlap</b>
+        directly, which is what the clinical metric actually measures.</p>
+      </div>
+    </div>
+    <h3 class="msub">Why this architecture</h3>
+    <p class="note">A U-Net contracts the image through four pooling stages to build understanding,
+    then expands it back. <b>Skip connections</b> carry high-resolution detail from each encoder
+    stage directly to the matching decoder stage — without them the output would be blurred, which
+    is unacceptable when the fine boundary of a lesion is the diagnostic signal. The same backbone
+    serves both tasks: one channel in and out for restoration, four modality channels in and four
+    class channels out for segmentation. 2D slices rather than 3D volumes keep the memory footprint
+    inside a 6 GB laptop GPU, a documented trade-off for this hardware class.</p>
+    ''')
+    return "".join(out)
+
+
 def build_tissue_result(case: str) -> str:
     """Healthy-brain CSF/GM/WM tissue segmentation on a showcase case."""
     from tissue_segmentation import segment_tissues, tissue_overlay, tissue_fractions, pick_t1_slice
@@ -717,6 +811,43 @@ details[open] summary::before{{content:"\\2212"}}
 .gloss b{{color:var(--ink);font-weight:600}}
 @media(max-width:760px){{.gloss{{columns:1}}}}
 
+/* ---------- white-box model page ---------- */
+.navlink{{font-size:0.8125rem;font-weight:600;color:var(--ink);text-decoration:none;
+  border:1px solid var(--line-2);border-radius:var(--r-s);padding:6px 11px;white-space:nowrap}}
+.navlink:hover{{background:var(--panel);border-color:var(--ink-2)}}
+.mstats{{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;
+  margin-bottom:22px}}
+.mstats>div{{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+  padding:14px 16px}}
+.mstats b{{display:block;font:700 1.375rem/1.15 var(--mono);letter-spacing:-0.02em}}
+.mstats span{{display:block;margin-top:4px;font-size:0.75rem;color:var(--ink-2)}}
+.msub{{margin:28px 0 8px;font-size:0.9375rem;padding-bottom:7px;border-bottom:1px solid var(--line)}}
+.mstage{{margin:14px 0;background:var(--surface);border:1px solid var(--line);
+  border-radius:var(--r);padding:12px 14px}}
+.mstage h4{{display:flex;justify-content:space-between;align-items:baseline;gap:12px;
+  margin-bottom:9px;font-size:0.8125rem}}
+.mstage h4 em{{font:500 0.6875rem/1 var(--mono);font-style:normal;color:var(--ink-2)}}
+.mstage .strip{{background:var(--panel)}}
+.tablewrap{{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r);
+  background:var(--surface)}}
+.mtable{{width:100%;border-collapse:collapse;font-size:0.75rem}}
+.mtable th{{text-align:left;font-weight:640;padding:9px 12px;background:var(--panel);
+  border-bottom:1px solid var(--line);position:sticky;top:0;white-space:nowrap}}
+.mtable td{{padding:6px 12px;border-bottom:1px solid var(--line);vertical-align:top}}
+.mtable tbody tr:last-child td{{border-bottom:none}}
+.mtable tbody tr:hover{{background:var(--panel)}}
+.mtable .mono{{font-family:var(--mono);font-size:0.6875rem}}
+.mtable .num{{text-align:right;font-variant-numeric:tabular-nums}}
+.mtable .dim{{color:var(--ink-2)}}
+.mmath{{display:grid;grid-template-columns:1fr 1fr;gap:14px}}
+@media(max-width:820px){{.mmath{{grid-template-columns:1fr}}}}
+.mmath>div{{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+  padding:14px 16px}}
+.mmath h4{{margin-bottom:8px;font-size:0.8125rem}}
+.mmath code{{display:block;font-family:var(--mono);font-size:0.8125rem;background:var(--panel);
+  border:1px solid var(--line);border-radius:var(--r-s);padding:9px 11px;margin-bottom:9px;
+  overflow-x:auto}}
+
 @media (prefers-reduced-motion: reduce){{
   *{{transition-duration:.01ms !important;animation-duration:.01ms !important}}
 }}
@@ -727,6 +858,7 @@ details[open] summary::before{{content:"\\2212"}}
     <span>Brain &amp; Lumbo-sacral Spine · MedhaDrishti</span>
   </div>
   <div class="spacer"></div>
+  <a class="navlink" href="/model">Inside the model</a>
   <span class="chip"><span class="led"></span>{device}</span>
   <span class="chip">{n_cases} validated cases</span>
 </header>
@@ -832,9 +964,9 @@ details[open] summary::before{{content:"\\2212"}}
 </main></body></html>"""
 
 
-def render(result_html=""):
-    block = (f'<section id="result"><div class="sec-head"><h2>Result</h2>'
-             f'<span class="hint">computed on the scan supplied above</span></div>'
+def render(result_html="", title="Result", hint="computed on the scan supplied above"):
+    block = (f'<section id="result"><div class="sec-head"><h2>{title}</h2>'
+             f'<span class="hint">{hint}</span></div>'
              f'{result_html}</section>') if result_html else ""
     cases = list_tumor_cases()
     options = "".join(f'<option value="{c}">{c}</option>' for c in cases) \
@@ -865,6 +997,14 @@ class Handler(BaseHTTPRequestHandler):
                 res = build_enhancement_result(clean, region, degrade=True) if clean is not None \
                     else '<p class="note">Sample not found.</p>'
             self._send(render(res))
+        elif u.path == "/model":
+            with _LOCK:
+                try:
+                    res = build_model_page()
+                except Exception as e:
+                    res = f'<p class="note">Model inspection failed: {html.escape(str(e))}</p>'
+            self._send(render(res, title="Inside the model",
+                              hint="traced from a live forward pass"))
         elif u.path in ("/tumor", "/tissue", "/gradcam"):
             case = parse_qs(u.query).get("case", [""])[0]
             with _LOCK:
