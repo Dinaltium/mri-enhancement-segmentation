@@ -85,6 +85,85 @@ def run(nifti_path: str, out_dir: str = None, timeout: int = 1800) -> dict:
             "error": None if ok else "no mask produced — see stderr"}
 
 
+def run_semantic_live(nifti_path: str, work_root: str = "outputs/spineps/live",
+                      timeout: int = 300, key: str = None) -> dict:
+    """Run ONLY the SPINEPS semantic phase, on the GPU, on an uploaded scan.
+
+    Why semantic-only: the instance phase forwards its whole working volume at
+    once and needs ~12.4 GiB, which does not fit in 6 GB. It is therefore run
+    offline on CPU (401 s) and shown as a precomputed reference. The semantic
+    phase does fit, and completes in under a minute, so it CAN run live.
+
+    Why the process is killed rather than allowed to finish: SPINEPS has no
+    "semantic only" flag. It writes the semantic mask, then starts the instance
+    phase and dies on OOM. Waiting for that adds a minute and an alarming
+    traceback for no benefit, so we watch for the mask and stop the process the
+    moment it lands. The mask is fully written and post-processed by then --
+    SPINEPS saves it as a completed step, not incrementally.
+    """
+    import glob
+    import time
+
+    if not available():
+        return {"ok": False, "error": "SPINEPS environment not installed"}
+
+    # Cache on the ORIGINAL filename, not the path we were handed. Uploads
+    # arrive as a randomly-named temp file, so keying on that meant the cache
+    # never hit and every click re-ran the model for a minute.
+    stem = os.path.basename(key or nifti_path)
+    for ext in (".nii.gz", ".nii"):
+        if stem.lower().endswith(ext):
+            stem = stem[: -len(ext)]
+            break
+    safe = "".join(c for c in stem if c.isalnum())[:32] or "upload"
+    work = os.path.join(work_root, safe)
+    os.makedirs(work, exist_ok=True)
+    local = os.path.join(work, f"sub-{safe}_T2w.nii.gz")
+    if os.path.abspath(local) != os.path.abspath(nifti_path):
+        shutil.copy(nifti_path, local)
+
+    hit = glob.glob(os.path.join(work, "**", "*seg-spine*.nii.gz"), recursive=True)
+    if hit:                                     # already computed for this scan
+        return {"ok": True, "semantic": hit[0], "seconds": 0.0, "cached": True}
+
+    env = dict(os.environ)
+    env.update(PYTHONIOENCODING="utf-8", PYTHONUTF8="1",
+               PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True")
+    code = ("from spineps.entrypoint import entry_point\n"
+            "import sys\n"
+            f"sys.argv=['spineps','sample','-i',r'{local}',"
+            "'-model_semantic','t2w','-model_instance','instance']\n"
+            "entry_point()")
+    proc = subprocess.Popen([SPINEPS_PY, "-u", "-c", code], env=env,
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    t0 = time.time()
+    found = None
+    try:
+        while time.time() - t0 < timeout:
+            hit = glob.glob(os.path.join(work, "**", "*seg-spine*.nii.gz"),
+                            recursive=True)
+            if hit:
+                # give the writer a moment to flush before we kill the process
+                time.sleep(1.5)
+                found = hit[0]
+                break
+            if proc.poll() is not None:
+                break
+            time.sleep(1.0)
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+        try:
+            proc.wait(timeout=10)
+        except Exception:
+            pass
+
+    if not found:
+        return {"ok": False, "error": f"no semantic mask after {int(time.time()-t0)}s"}
+    return {"ok": True, "semantic": found, "seconds": round(time.time() - t0, 1),
+            "cached": False}
+
+
 def mask_in_scan_space(mask_path: str, scan_path: str) -> np.ndarray:
     """Resample a SPINEPS mask back into the ORIGINAL scan's voxel grid.
 

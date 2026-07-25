@@ -24,6 +24,12 @@ import re
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+# Every asset path in this file is relative to the project root (models/,
+# outputs/, showcase/). Anchor the working directory to the repo root so the
+# server works no matter where it is launched from — otherwise a launch from
+# src/ fails with "No such file or directory: models/enhancement_model_brain.pt".
+os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import cv2
 import matplotlib
 matplotlib.use("Agg")
@@ -442,6 +448,291 @@ def _spineps_reference_block() -> str:
                       'structures with <b>no annotations</b>. SPINEPS adds the numbered instances '
                       'neither can reach.')
     return out
+
+
+def build_stages_page() -> str:
+    """The four rubric stages, each answered with what we did, what it cost, and
+    what we could not do. Written to be read by a judge in a few minutes."""
+    def fig(path, cap):
+        b = _file_b64(path)
+        return (f'<figure class="sfig"><img class="result" src="{b}">'
+                f'<figcaption class="note">{cap}</figcaption></figure>') if b else ""
+
+    return f"""
+<div class="stage">
+<h2 class="sec">Stage 1 · Dataset analysis <span class="w">20%</span></h2>
+
+<p class="note"><b>Where the data came from.</b> Two sources, deliberately.
+<b>BraTS2020</b> (Kaggle <code>awsaf49/brats20</code>) — <b>4.47 GB</b> archive, 9.9 GB
+unpacked, 369 cases of which we extracted <b>126</b>. Every case has T1, T1c, T2 and
+FLAIR plus an <b>expert tumour mask</b>, 240×240×155 at 1 mm isotropic. This is the only
+data in the project with ground truth, so it is the only place we quote accuracy.
+The <b>hackathon offline set</b> — 10 normal + 10 pathological brain, 10 normal + 10
+pathological spine — has <b>no annotations at all</b>.</p>
+
+<p class="note"><b>What we measured, before touching anything.</b> Seven properties per
+volume: contrast, complexity, sharpness (Laplacian variance), edge strength (Sobel),
+noise level, mean and standard deviation — the exact list the brief names.</p>
+
+<p class="note"><b>The finding that shaped everything after it.</b> BraTS is uniform:
+1 mm isotropic, every case. The hackathon data is <b>not</b> — voxels range
+<b>0.25–1.3 mm</b> and slice thickness <b>3–13 mm</b>. You cannot feed that mixture to
+one network, which is precisely why Stage 2 resamples to a common 224×224 grid.
+Spine scans also measure about <b>2× the complexity</b> of brain scans — more distinct
+structures per slice — which is why spine needed different methods, not just retraining.</p>
+
+<p class="note"><b>Sub-modality division and splits.</b> Every case is catalogued by
+sequence (T1 / T1c / T2 / FLAIR / STIR). Splits are <b>case-level, never slice-level</b>
+— slices from one patient are highly correlated, so splitting by slice leaks information
+between train and test and inflates every score. Offline data follows the coordinator's
+rule: <b>5 train / 5 test</b> in each of the four groups. Full per-case enumeration is in
+<code>stats/splits_report.txt</code>.</p>
+
+{fig("outputs/demo/dataset_properties.png", "Measured properties across both datasets. The spread in the hackathon columns is the heterogeneity that forced resampling.")}
+{fig("outputs/demo/annotation_labels.png", "BraTS label distribution — background <b>99.03%</b>, edema 0.71%, enhancing 0.17%, necrotic 0.10%. This single table decided our loss function.")}
+
+<h2 class="sec">Stage 2 · Preprocessing <span class="w">10%</span></h2>
+
+<p class="note"><b>The chain.</b> Read NIfTI directly with nibabel (<b>we never convert
+the .nii files</b> — PNG and JSON are outputs only) → normalise intensity per volume →
+resample to 224×224 → drop near-empty slices → classical enhancement baselines
+(HE, CLAHE) → <b>re-measure all seven properties afterwards</b>, because the brief asks
+for the assessment after preprocessing, not just before.</p>
+
+<p class="note"><b>What we hit on brain.</b> Cubic interpolation overshoots at sharp
+edges, pushing intensities outside [0,1] — a silent corruption that would have poisoned
+training. We clip immediately after every cubic resize. Tumour classes are under 1% of
+pixels, so cross-entropy alone would score 99% by predicting "background" everywhere.</p>
+
+<p class="note"><b>What we hit on spine, which was harder.</b> Three sequences
+(T1/T2/STIR) with genuinely different contrast behaviour — STIR deliberately suppresses
+fat, so its intensity statistics are unlike T1's. We tested whether one model could serve
+all three. <b>It could not</b>, and we have the numbers: per-sequence models beat a single
+pooled model on <b>3 of 3</b> sequences (T1 0.598→0.827, T2 0.594→0.802,
+STIR 0.540→0.714 SSIM, same test slices). Slice thickness up to 13 mm also means spine
+volumes are nearly 2D — which later blocked the pretrained model on most files.</p>
+
+<p class="note"><b>Honest limit.</b> Classical enhancement <i>raises</i> measured noise:
+baseline 0.0068 → HE 0.0138 → CLAHE 0.0106. They boost contrast and amplify grain with
+it. Our learned model is the only stage that <b>reduces</b> it, to 0.0043.</p>
+
+{fig("outputs/demo/cmp_noise.png", "Noise after each stage. Every classical method moves the wrong way; only the trained model reduces noise.")}
+
+<h2 class="sec">Stage 3 · Enhancement model <span class="w">30%</span></h2>
+
+<p class="note"><b>Architecture and why.</b> 2D U-Net, encoder–decoder with <b>skip
+connections</b>, base_filters 32, <b>7.77 M parameters</b>, 31 MB. Skip connections matter
+clinically: they carry fine detail straight from encoder to decoder, so the output is not
+blurred — and in medicine the fine boundary <i>is</i> the diagnosis. 2D rather than 3D
+because published 3D BraTS models document a <b>16 GB+</b> VRAM requirement and this is a
+6 GB laptop card; 2D slice-wise is the standard documented workaround.</p>
+
+<p class="note"><b>Loss function.</b> <b>L1 + SSIM.</b> L1 fixes per-pixel intensity;
+SSIM enforces <i>structural</i> similarity. L1 alone produces smooth, structurally wrong
+images that still score well per-pixel — the failure mode SSIM exists to catch.</p>
+
+<p class="note"><b>How we made training pairs without a clean/noisy pair existing.</b>
+Self-supervised: take the clean scan, <b>degrade it ourselves</b>, train the model to
+restore it back to itself. The degradation is MRI-correct, not generic —
+<b>Rician noise</b> (the true noise model for MRI magnitude images; plain Gaussian would
+be a real methodological error), a smooth multiplicative <b>bias field</b> (RF coil
+inhomogeneity), and mild blur. σ was later widened 0.02→0.20 so the model survives very
+noisy real uploads.</p>
+
+<p class="note"><b>Optimiser and training.</b> Adam, lr 1e-3, AMP mixed precision.
+Converged around <b>epoch 25</b>, validation tracking training with an overfitting gap of
+<b>≈ 0</b>. 3-fold cross-validation agrees to <b>±0.04</b>.</p>
+
+<p class="note"><b>What we gained.</b> On BraTS: <b>PSNR 30.3, SSIM 0.965</b>. Under heavy
+noise SSIM goes 0.19 → <b>0.89</b>. Against the classical family on identical degraded
+slices: degraded input 18.05 dB / 0.196 SSIM, HE 8.05 / 0.149, AHE 6.35 / 0.133,
+CLAHE 11.84 / 0.156, <b>ours 27.08 / 0.903</b>. Note that every classical method scores
+<i>below the noisy input</i> — that is the headline.</p>
+
+<p class="note"><b>What it costs.</b> <b>4.24 ms/image</b>, 236 images/sec, peak 385 MB
+GPU, 84% GPU utilisation. Small enough to run on the laptop in front of you.</p>
+
+<p class="note"><b>What we do NOT claim.</b> The model corrects noise and intensity
+artefacts — it <b>does not synthesise anatomy</b>. SSIM above 0.9 against the true scan
+is the evidence for that: an inventing model would diverge structurally.</p>
+
+{fig("outputs/demo/cmp_methods.png", "Restoration against the classical baseline family, same degraded slices.")}
+
+<h2 class="sec">Stage 4 · ROI segmentation <span class="w">30%</span></h2>
+
+<p class="note"><b>Brain — this worked.</b> Same U-Net backbone, <b>4 input channels</b>
+(T1/T1c/T2/FLAIR stacked, because each sequence reveals a different tumour part — T1c the
+active rim, FLAIR/T2 the swelling) → 4 class channels out.
+<b>Loss = Cross-Entropy + soft Dice.</b> Dice is there specifically because tumour is
+under 1% of pixels; CE alone finds nothing and still scores 99%.
+Result: <b>mean tumour Dice 0.76</b>, <b>enhancing tumour 0.84</b> — the clinically most
+important class is our strongest — on patients held out of training entirely. Full suite
+computed: Jaccard, accuracy, sensitivity, specificity, precision, F1, Hausdorff, ASD,
+relative volume error. Grad-CAM confirms the network attends to the lesion, not to an
+unrelated region.</p>
+
+<p class="note"><b>Spine — the honest part, and the most important thing on this page.</b>
+The spine data has <b>no annotations</b> and external data was not permitted, so nothing
+here can be trained the ordinary way. We built four annotation-free methods and
+<b>validated all of them</b>:</p>
+
+<table class="stab">
+<tr><th>What we tried</th><th>Outcome</th></tr>
+<tr><td>k-means / SLIC intensity clustering</td><td>Works, but groups <b>brightness</b> — cannot separate two adjacent vertebrae that look identical</td></tr>
+<tr><td><b>Self-supervised CNN</b> (differentiable feature clustering, trained on each scan itself)</td><td><b>Our best method.</b> Resolves cord, vertebral chain, soft tissue — highest precision of all three on all four structures</td></tr>
+<tr><td>Autoencoder anomaly detection (trained on healthy spines only)</td><td class="bad"><b>FAILED validation — AUC 0.266</b>, worse than chance. Normal spines scored <i>higher</i> than pathological. <b>Claim withdrawn.</b></td></tr>
+<tr><td>Periodicity-based vertebra detection (4 variants)</td><td class="bad">All four locked onto soft tissue. <b>Not shipped.</b></td></tr>
+</table>
+
+<p class="note"><b>So do we localise the spine problem? No — and we say so.</b> This is
+the honest limit of our own work. Our autoencoder produced a convincing-looking heat map
+that fired on <b>healthy</b> spines, which is worse than useless clinically. We tested
+five different scoring statistics (mean 0.304, max 0.500, p99 0.388, p95 0.312,
+top-1% 0.413) — all at or below chance, so it was not a scoring artefact. We removed the
+detector rather than ship it. <b>An unvalidated detector that fires on healthy patients is
+more dangerous than no detector at all.</b></p>
+
+<p class="note"><b>What we do instead — measure, not guess.</b> Spinal stenosis <i>is</i>
+narrowing of the canal, so rather than predicting a diagnosis we <b>measure the quantity a
+radiologist actually reads</b>: segment the CSF column, find its axis automatically by PCA
+so orientation does not matter, and sample width perpendicular to it. Canal detected on
+<b>91 of 92</b> validation slices. Pathological canals do trend narrower
+(<b>0.485 vs 0.557</b>, AUC 0.69) — the direction stenosis predicts — but with 10 vs 9
+patients that is <b>not statistically significant (p = 0.089)</b>. We report the
+measurement and the trend and stop there.</p>
+
+<p class="note"><b>Why we then use a pretrained model, and for exactly one thing.</b>
+Naming a herniated disc, or numbering a vertebra, is <b>supervised by nature</b> — a model
+can only output "L4" if it has seen examples labelled "L4". With 20 unlabelled cases and
+no external data, <b>no model we train can produce that.</b> That is a property of the
+problem, not a lack of effort, and we proved it with the four methods above. With the
+organisers' approval we use <b>SPINEPS</b> (Möller et al., <i>European Radiology</i> 2025,
+Apache-2.0), pretrained on SPIDER + the German National Cohort (~1,600+ annotated
+subjects), published Dice <b>0.92</b> vertebrae / 0.967 discs / 0.958 canal. We supply it
+no annotations, we do not train it, and <b>we claim none of its accuracy as ours.</b></p>
+
+<p class="note"><b>And we measured our distance from it rather than asserting it.</b>
+Using SPINEPS as a reference standard: our self-supervised CNN has the
+<b>highest precision of all three annotation-free methods on all four structures</b>
+(0.191 / 0.050 / 0.310 / 0.116) and the best overlap on three of four. And our best Dice
+is <b>0.38</b> against their published <b>0.92</b>, with <b>zero</b> numbered vertebrae.
+That measured gap is the justification.</p>
+
+{fig("outputs/demo/spine_vs_spineps.png", "Our annotation-free methods scored against the pretrained reference. Left: overlap. Centre: precision — ours leads on all four. Right: what external labels buy, which we cannot produce.")}
+{fig("outputs/demo/tumor_vs_gt.png", "Brain: our prediction (centre) against the radiologist's annotation (right), on a held-out patient.")}
+
+<h2 class="sec">Two caveats we state rather than bury</h2>
+<p class="note">1. The Dice values above are <b>oracle-assisted upper bounds</b> —
+unsupervised clusters are anonymous, so the reference has to pick which cluster to score.
+They answer "was this structure isolated as a distinct region?", not "can the method name
+it?" 2. The self-supervised CNN is <b>stochastic</b>: it is seeded, but cuDNN selects
+nondeterministic kernels, so every figure we quote for it is a <b>mean ± sd over 3
+runs</b> rather than one unreproducible number.</p>
+</div>"""
+
+
+def _qualifying_spine_files(min_slices: int = 5) -> str:
+    """List the spine volumes that actually have enough slices for SPINEPS.
+
+    Most of the supplied spine files are near-single-slice exports, so a bare
+    "not enough slices" message leaves the user guessing which file to try.
+    """
+    import glob
+    import nibabel as nib
+    ok = []
+    for p in sorted(glob.glob("showcase/for_spineps/*.nii*") +
+                    glob.glob("showcase/**/*SPINE*.nii*", recursive=True)):
+        try:
+            s = nib.load(p).shape
+            if len(s) >= 3 and min(s[:3]) >= min_slices:
+                n = os.path.basename(p)
+                if n not in [o[0] for o in ok]:
+                    ok.append((n, s))
+        except Exception:
+            pass
+    if not ok:
+        return " <i>none found</i>"
+    lst = "<br>".join(f"&nbsp;&nbsp;<b>{n}</b> &nbsp;{s}" for n, s in ok[:20])
+    more = f"<br>&nbsp;&nbsp;<i>… {len(ok) - 20} more</i>" if len(ok) > 20 else ""
+    return f"<br><b>showcase/for_spineps/</b> — one full volume per patient:<br>{lst}{more}"
+
+
+def build_spineps_live(raw: bytes, filename: str) -> str:
+    """Run the pretrained model live, on the GPU, on the uploaded spine scan.
+
+    Semantic phase only — that is the phase that fits in 6 GB. The instance
+    phase needs ~12.4 GiB and is shown precomputed instead; the page says so
+    rather than implying everything ran live.
+    """
+    import tempfile
+    fn = (filename or "").lower()
+    if not (fn.endswith(".nii") or fn.endswith(".nii.gz")):
+        return ('<p class="note">SPINEPS needs a 3D NIfTI volume (.nii/.nii.gz) — a '
+                'single PNG slice does not carry the through-plane stack it segments.</p>')
+
+    suffix = ".nii.gz" if fn.endswith(".gz") else ".nii"
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+    tmp.write(raw); tmp.close()
+    try:
+        import nibabel as nib
+        shape = nib.load(tmp.name).shape
+        # through-plane is the smallest axis, not necessarily axis 2 —
+        # these scans arrive in several orientations
+        thin = min(shape[:3]) if len(shape) >= 3 else 0
+        if len(shape) < 3 or thin < 5:
+            return (f'<p class="note"><b>This volume is {shape}</b> — only {thin} slices '
+                    'through-plane. SPINEPS segments a 3D sagittal <i>stack</i>; it cannot '
+                    'work from a near-single-slice export.<br><br>'
+                    'Files in <code>showcase/for_enhancement/</code> that do qualify:'
+                    f'{_qualifying_spine_files()}</p>')
+
+        from spineps_runner import run_semantic_live, mask_in_scan_space
+        r = run_semantic_live(tmp.name, key=filename)
+        if not r.get("ok"):
+            return (f'<p class="note">SPINEPS did not produce a mask: '
+                    f'{html.escape(str(r.get("error")))}</p>')
+
+        m = mask_in_scan_space(r["semantic"], tmp.name)
+        vol = nib.load(tmp.name).get_fdata().astype(np.float32)
+        counts = [(m[..., k] > 0).sum() for k in range(m.shape[2])]
+        k = int(np.argmax(counts))
+        img = vol[..., k]
+        img = (img - img.min()) / (np.ptp(img) + 1e-8)
+        labs = sorted(int(u) for u in np.unique(m) if u > 0)
+
+        base = cv2.cvtColor((img * 255).astype(np.uint8), cv2.COLOR_GRAY2BGR)
+        pal = np.random.RandomState(0).randint(60, 240, (150, 3)).astype(np.uint8)
+        col = np.zeros_like(base)
+        for u in labs:
+            col[m[..., k] == u] = pal[u % 150]
+        ov = cv2.addWeighted(base, 1.0, col, 0.55, 0)
+
+        named = " · ".join(f"<b>{u}</b> {SPINEPS_LABELS.get(u, '?')}" for u in labs)
+        secs = r.get("seconds", 0)
+        how = "already computed for this scan" if r.get("cached") else \
+              f"computed live on the GPU in <b>{secs:.0f} s</b>"
+        out = _pstep("SPINEPS live · named spinal structures",
+                     _np_b64(cv2.cvtColor(ov, cv2.COLOR_BGR2RGB), gray=False),
+                     f'<div class="verdict v-ok"><b>{len(labs)} structures</b> found on '
+                     f'<b>your uploaded scan</b>, {how}.</div>'
+                     f'<p class="note">{named}</p>')
+        note = ('<p class="note"><b>What ran, precisely.</b> This is the pretrained model\'s '
+                '<b>semantic phase</b>, executed live on the GPU on the scan you just '
+                'uploaded — it names structure <i>types</i>. Its <b>instance phase</b>, which '
+                'numbers individual vertebrae, forwards its whole working volume at once and '
+                'needs about <b>12.4 GB</b> of VRAM; this card has 6 GB, so that phase runs '
+                'offline on CPU (401 s) and is shown precomputed in the spine pipeline. We '
+                'say which is which rather than implying both ran live.</p>'
+                '<p class="note"><b>Provenance:</b> SPINEPS (Möller et al., <i>European '
+                'Radiology</i> 2025, Apache-2.0), pretrained on SPIDER and the German '
+                'National Cohort. We supply it no annotations and do not train it, and we '
+                'claim none of its published accuracy as our own.</p>')
+        return f'<div class="pipeline">{out}</div>{note}'
+    finally:
+        try:
+            os.unlink(tmp.name)
+        except Exception:
+            pass
 
 
 def looks_like_mri(sl: np.ndarray, filename: str = "", raw: bytes = None) -> bool:
@@ -1012,6 +1303,20 @@ button:disabled{{opacity:.45;cursor:not-allowed}}
 .sec{{grid-column:1/-1;margin:16px 0 -4px;font-size:0.9375rem;font-weight:650;
   padding-top:16px;border-top:1px solid var(--line)}}
 .pipeline > .note{{grid-column:1/-1;margin-top:-2px}}
+/* stages page: long-form reading column, wider than the results grid cards */
+.stage{{max-width:74ch}}
+.stage .note{{font-size:0.8125rem;line-height:1.65;margin:10px 0}}
+.stage .sec{{margin:30px 0 12px;font-size:1.0625rem}}
+.stage .sec .w{{font:600 0.6875rem/1 var(--mono);color:var(--ink-2);
+  border:1px solid var(--line);border-radius:99px;padding:2px 8px;margin-left:8px;
+  vertical-align:middle}}
+.sfig{{margin:16px 0}}
+.sfig img{{max-width:100%}}
+.stab{{width:100%;border-collapse:collapse;margin:12px 0;font-size:0.78125rem}}
+.stab th,.stab td{{border:1px solid var(--line);padding:8px 10px;text-align:left;
+  vertical-align:top}}
+.stab th{{background:var(--panel);font-weight:600}}
+.stab .bad{{color:var(--neg)}}
 .note{{font-size:0.75rem;line-height:1.55;color:var(--ink-2)}}
 .note b{{color:var(--ink);font-weight:600}}
 
@@ -1105,6 +1410,7 @@ details.inside .tablewrap{{max-height:420px;overflow-y:auto}}
     <span>Brain &amp; Lumbo-sacral Spine · MedhaDrishti</span>
   </div>
   <div class="spacer"></div>
+  <a class="navlink" href="/stages">The four stages</a>
   <a class="navlink" href="/model">Inside the model</a>
   <span class="chip"><span class="led"></span>{device}</span>
   <span class="chip">{n_cases} validated cases</span>
@@ -1152,6 +1458,9 @@ details.inside .tablewrap{{max-height:420px;overflow-y:auto}}
               <select name="region">{region_options}</select>
             </label>
             <button type="submit">Run pipeline</button>
+            <button class="ghost" type="submit" formaction="/spineps_live"
+                    title="Spine, 3D NIfTI only. Runs the pretrained model live on the GPU (~1 min).">
+              SPINEPS live (GPU)</button>
           </div>
         </form>
         <p class="hint-row">Brain yields tumour sub-regions, a CSF/GM/WM tissue map and a Grad-CAM
@@ -1264,6 +1573,15 @@ class Handler(BaseHTTPRequestHandler):
                 res = build_enhancement_result(clean, region, degrade=True) if clean is not None \
                     else '<p class="note">Sample not found.</p>'
             self._send(render(res, region=self._region()))
+        elif u.path == "/stages":
+            with _LOCK:
+                try:
+                    res = build_stages_page()
+                except Exception as e:
+                    res = f'<p class="note">Failed: {html.escape(str(e))}</p>'
+            self._send(render(res, title="The four stages",
+                              hint="what was asked, what we did, and what we could not do",
+                              region=self._region()))
         elif u.path == "/model":
             with _LOCK:
                 try:
@@ -1289,7 +1607,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send(render('<p class="note">Not found.</p>', region=self._region()), 404)
 
     def do_POST(self):
-        if self.path not in ("/process", "/spine_roi", "/pipeline"):
+        if self.path not in ("/process", "/spine_roi", "/pipeline", "/spineps_live"):
             self._send(render('<p class="note">Not found.</p>', region=self._region()), 404)
             return
         form = cgi.FieldStorage(fp=self.rfile, headers=self.headers,
@@ -1305,6 +1623,8 @@ class Handler(BaseHTTPRequestHandler):
             with _LOCK:
                 if self.path == "/pipeline":
                     res = build_pipeline_result(raw, item.filename, region)
+                elif self.path == "/spineps_live":
+                    res = build_spineps_live(raw, item.filename)
                 elif self.path == "/spine_roi":
                     res = build_spine_roi_result(raw, item.filename)
                 else:
