@@ -155,6 +155,8 @@ figcaption{{color:var(--mut);font-size:14px;margin-top:8px;text-align:center}}
 .two{{display:grid;grid-template-columns:1fr 1fr;gap:16px}} @media(max-width:820px){{.two{{grid-template-columns:1fr}}}}
 table{{width:100%;border-collapse:collapse;margin-top:12px;font-size:15px}} th,td{{padding:8px 10px;border-bottom:1px solid #2c3d4f;text-align:left}} th{{color:var(--acc)}}
 .good{{color:var(--good);font-weight:700}} .bad{{color:var(--bad);font-weight:700}}
+/* neither good nor bad — used for provenance, e.g. "pretrained weights" */
+.warn{{color:#d9a441;font-weight:700}}
 .qa{{margin:10px 0;padding:12px 16px;background:#10202c;border-radius:10px}} .qa .q{{font-weight:700;color:var(--acc)}}
 .missing{{color:var(--bad)}} .toc a{{color:var(--acc);margin-right:16px;text-decoration:none;font-weight:600}}
 </style></head><body>
@@ -367,18 +369,42 @@ table{{width:100%;border-collapse:collapse;margin-top:12px;font-size:15px}} th,t
   <table style="margin-top:8px">
     <tr><th>Spine task</th><th>Method</th><th>Annotations used</th></tr>
     <tr><td>Enhancement</td><td>Self-supervised U-Net (the scan is degraded, then restored to itself)</td><td class="good">none</td></tr>
-    <tr><td>ROI segmentation</td><td>SLIC superpixels + unsupervised intensity clustering</td><td class="good">none</td></tr>
+    <tr><td>ROI segmentation</td><td>Self-supervised CNN (differentiable feature clustering, trained on the scan itself)</td><td class="good">none</td></tr>
+    <tr><td>Canal morphometry</td><td>Geometric canal-width profile along a PCA-derived axis</td><td class="good">none</td></tr>
     <tr><td>Reconstruction-difference view</td><td>Autoencoder trained on healthy scans only — <b>validated and withdrawn as a detector</b></td><td class="good">none</td></tr>
+    <tr><td>Per-vertebra instances</td><td>SPINEPS — <b>pretrained, external training data</b>, used with approval for this one output</td><td class="warn">pretrained weights</td></tr>
   </table></div>
 
   <h3>Spine segmentation — every method we tried, on the same slice</h3>
-  {img(f"{D}/spine_method_comparison.png","Left to right: the raw scan, CLAHE, per-pixel k-means, SLIC superpixels, and our self-supervised CNN. Each labelled method uses no annotations. The progression is visible — intensity clustering fragments the image, while the trained network resolves the cord, the vertebral chain and the surrounding soft tissue as coherent structures.")}
+  {img(f"{D}/spine_method_comparison.png","Left to right: the raw scan, CLAHE, per-pixel k-means, SLIC superpixels, our self-supervised CNN, and SPINEPS. The first five use no annotations; SPINEPS is pretrained on external data and labelled as such. Intensity clustering floods the background because it groups brightness and cannot separate two adjacent vertebrae that look identical; the trained network resolves the cord, vertebral chain and soft tissue as coherent structures; SPINEPS adds the numbered per-vertebra instances neither can reach.")}
   <div class="simple"><b>Why the CNN is the honest headline here:</b> k-means and SLIC only group
   brightness — they cannot represent structure. The self-supervised network is optimised on the scan
   itself (differentiable feature clustering): each pixel is pushed to commit to a class, neighbours are
   pushed to agree, and a balance term prevents everything collapsing into one region. It is a genuinely
   trained model that still requires <b>zero annotations</b>, which is exactly what the brief asks for
   on spine.</div>
+
+  <h3>How good is ours, really? We measured it against a reference standard</h3>
+  {img(f"{D}/spine_vs_spineps.png","Our annotation-free methods scored against the pretrained model used as a reference standard. Left: Dice by structure, with the reference's own published accuracy marked. Centre: precision — our CNN leads on all four structures. Right: what external labels buy, namely named and numbered vertebrae our methods cannot produce.")}
+  <div class="simple"><b>Both halves of this, honestly.</b> Our self-supervised CNN has the
+  <b>highest precision of all three annotation-free methods on all four structures</b>
+  (0.310 vs 0.194 on the canal, 0.116 vs 0.038 on posterior elements) and the best overlap on three of
+  four. The classical methods show high recall with very low precision — they <i>find</i> the structure,
+  then bleed across the whole image, exactly the failure you expect from grouping by brightness.
+  <br><br>
+  And our best is <b>Dice 0.38</b> against SPINEPS's published <b>0.92</b>, with <b>zero</b> numbered
+  vertebrae, because numbering needs labels we do not have. <b>That measured gap is why a pretrained
+  model is used for that one output</b> — not convenience.
+  <br><br>
+  <b>Two caveats we state rather than bury.</b> These Dice values are <i>oracle-assisted upper
+  bounds</i>: unsupervised clusters are anonymous, so the reference has to pick which one to score —
+  the number answers "was this structure isolated as a distinct region?", not "can the method name
+  it?". And the CNN is stochastic (seeded, but cuDNN picks nondeterministic kernels), so every figure
+  is the mean ± standard deviation over three runs.</div>
+
+  <h3>Per-vertebra instances — what the pretrained model adds</h3>
+  {img(f"{D}/spineps_instances.png","SPINEPS per-vertebra instance segmentation on case SP11: 17 individually numbered vertebrae. The numbers are instance IDs — they mean 'this is a separate bone from the one above it'. They are not a diagnosis and not a severity score.")}
+  {img(f"{D}/spineps_semantic.png","The semantic pass: 13 named structure types. Red vertebral bodies, blue intervertebral discs, white/green spinal canal and cord, purple/cyan posterior elements. Masks are returned on SPINEPS's own resampled, reoriented grid and mapped back through the image affine — matching by array index instead produces a visibly rotated overlay.")}
 
   <h3>Spine — a negative result we are reporting rather than hiding</h3>
   <div class="simple"><b>The idea:</b> train an autoencoder on <b>healthy spines only</b>, then whatever
