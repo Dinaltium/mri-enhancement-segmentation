@@ -142,10 +142,16 @@ def run_semantic_live(nifti_path: str, work_root: str = "outputs/spineps/live",
     env = dict(os.environ)
     env.update(PYTHONIOENCODING="utf-8", PYTHONUTF8="1",
                PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True")
+    # -non4 skips ANTs N4 bias-field correction. Needed because several of the
+    # supplied scans have non-orthonormal direction cosines (oblique acquisitions),
+    # and ITK inside ANTs refuses them outright:
+    #   "ITK only supports orthonormal direction cosines"
+    # N4 is a preprocessing nicety here, not a requirement — the alternative is
+    # rewriting the affine, which would silently move the anatomy.
     code = ("from spineps.entrypoint import entry_point\n"
             "import sys\n"
             f"sys.argv=['spineps','sample','-i',r'{local}',"
-            "'-model_semantic','t2w','-model_instance','instance']\n"
+            "'-model_semantic','t2w','-model_instance','instance','-non4']\n"
             "entry_point()")
     # Log to a FILE, never to subprocess.PIPE. SPINEPS is very chatty (nnU-Net
     # progress bars); with a pipe nobody drains, the 64 KB OS buffer fills and
