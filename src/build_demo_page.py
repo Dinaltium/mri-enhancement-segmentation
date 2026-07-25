@@ -392,6 +392,18 @@ table{{width:100%;border-collapse:collapse;margin-top:12px;font-size:15px}} th,t
   allowed). <b>Grad-CAM</b> for attention.</div>
 </section>
 
+<section>
+  <div class="tag">EVIDENCE · AT A GLANCE</div>
+  <h2>Four measured claims, on one screen</h2>
+  {img(f"{D}/cmp_summary.png","Everything we assert, measured. 1 · our model restores SSIM to 0.90 while every classical method falls below the noisy input. 2 · ours is the only stage that reduces noise. 3 · tumour Dice against the radiologist. 4 · per-sequence spine models win 3/3.")}
+  {img(f"{D}/cmp_methods.png","Restoration quality across four independent metrics — PSNR, SSIM, FSIM and VIF — on identical slices with identical degradation.")}
+  {img(f"{D}/cmp_noise.png","The mechanism behind the result: HE and CLAHE raise the noise level; only the learned model lowers it.")}
+  <div class="two">
+    <div>{img(f"{D}/cmp_segmentation.png","Per-class segmentation performance against expert annotation.")}</div>
+    <div>{img(f"{D}/cmp_modality.png","Spine: one model per MRI sequence versus a single pooled model, scored on the same test slices.")}</div>
+  </div>
+</section>
+
 <section id="s5">
   <div class="tag">STAGE 5 · RESULTS &amp; DELIVERABLES</div>
   <h2>Everything the rubric asks for, measured</h2>
