@@ -21,7 +21,7 @@ OUT = "outputs/plots"
 os.makedirs(OUT, exist_ok=True)
 
 
-def plot_segmentation(path="segmentation_metrics.json"):
+def plot_segmentation(path="results/segmentation_metrics.json"):
     if not os.path.exists(path):
         print(f"[plots] {path} not found, skip"); return
     d = json.load(open(path))
@@ -76,7 +76,7 @@ def plot_enhancement(path):
 
 def main():
     plot_segmentation()
-    for path in sorted(glob.glob("enhancement_metrics*.json")):
+    for path in sorted(glob.glob("results/enhancement_metrics*.json")):
         try:
             plot_enhancement(path)
         except Exception as e:

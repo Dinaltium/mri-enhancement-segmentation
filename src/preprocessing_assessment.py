@@ -112,10 +112,10 @@ def main():
     os.makedirs("stats", exist_ok=True)
     groups = ["brain_normal", "brain_pathological", "spine_normal", "spine_pathological"]
     enh_models = {
-        "brain_normal": load_enh("enhancement_model_brain.pt"),
-        "brain_pathological": load_enh("enhancement_model_brain.pt"),
-        "spine_normal": load_enh("enhancement_model_spine_normal.pt"),
-        "spine_pathological": load_enh("enhancement_model_spine_pathological.pt"),
+        "brain_normal": load_enh("models/enhancement_model_brain.pt"),
+        "brain_pathological": load_enh("models/enhancement_model_brain.pt"),
+        "spine_normal": load_enh("models/enhancement_model_spine_normal.pt"),
+        "spine_pathological": load_enh("models/enhancement_model_spine_pathological.pt"),
     }
     report, csv_rows = {}, []
     props7 = ["mean", "deviation", "contrast", "complexity", "sharpness",

@@ -162,7 +162,7 @@ def main() -> None:
                         help="run the (heavier) per-class Dice/HD eval every N epochs")
     parser.add_argument("--no_amp", action="store_true",
                         help="disable mixed precision (AMP is on by default on CUDA)")
-    parser.add_argument("--out", default="segmentation_model.pt")
+    parser.add_argument("--out", default="models/segmentation_model.pt")
     args = parser.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -283,7 +283,7 @@ def main() -> None:
         "final_val_metrics": final_metrics,
         "history": history,
     }
-    with open("segmentation_metrics.json", "w") as f:
+    with open("results/segmentation_metrics.json", "w") as f:
         json.dump(summary, f, indent=2)
     print("[train_segmentation] saved -> segmentation_metrics.json "
           "(loss curves + per-class Dice/Jaccard/HD/ASD for the report)")

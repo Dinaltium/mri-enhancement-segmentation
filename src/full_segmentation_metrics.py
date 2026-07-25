@@ -29,7 +29,7 @@ CLASSES = {1: "necrotic_non_enhancing", 2: "edema", 3: "enhancing"}
 
 
 def main():
-    ck = torch.load("segmentation_model.pt", map_location=DEVICE)
+    ck = torch.load("models/segmentation_model.pt", map_location=DEVICE)
     model = SegmentationUNet(num_classes=NUM_SEG_CLASSES, in_channels=4,
                              base_filters=ck.get("base_filters", 32)).to(DEVICE).eval()
     model.load_state_dict(ck["model_state_dict"])
@@ -107,7 +107,7 @@ def main():
               f"{str(r['average_surface_distance_mean']):>6} {r['relative_volume_error']:>6.3f}")
     print(f"\nmean tumour Dice = {mean_dice:.4f}")
 
-    with open("segmentation_full_metrics.json", "w") as f:
+    with open("results/segmentation_full_metrics.json", "w") as f:
         json.dump(results, f, indent=2)
     print("[full-metrics] wrote segmentation_full_metrics.json")
 

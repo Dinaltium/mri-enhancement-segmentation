@@ -54,7 +54,7 @@ if _res:
                          f"<td>{sl}</td><td>{vx} mm</td><td>{th} mm</td></tr>")
 
 # --- utilization (Stage 3) ---
-_util = _load("benchmark_utilization.json")
+_util = _load("results/benchmark_utilization.json")
 util_txt = "—"
 if _util:
     e = _util.get("EnhancementUNet", {}); s = _util.get("SegmentationUNet", {})
@@ -62,7 +62,7 @@ if _util:
                 f"{s.get('gpu_util_pct_mean')}% GPU · CPU ~{e.get('cpu_util_pct_mean')}%")
 
 # --- modality-specific vs pooled (spine) ---
-_modcmp = _load("modality_comparison.json")
+_modcmp = _load("results/modality_comparison.json")
 modcmp_rows = ""
 if _modcmp:
     for mod in ["T1", "T2", "STIR"]:
@@ -84,7 +84,7 @@ if _annot:
         annot_dist += f"<tr><td>{k}</td><td>{v} %</td></tr>"
 
 # --- full segmentation metric suite (Stage 4) ---
-_segfull = _load("segmentation_full_metrics.json")
+_segfull = _load("results/segmentation_full_metrics.json")
 segfull_rows = ""
 if _segfull:
     for cls in ["necrotic_non_enhancing", "edema", "enhancing"]:
@@ -117,7 +117,7 @@ if _pre:
                          f"<td>{a['noise_level']}</td></tr>")
 
 # --- paper/classical baseline comparison (Stage 3) ---
-_paper = _load("paper_comparison.json")
+_paper = _load("results/paper_comparison.json")
 paper_rows = ""
 if _paper:
     for name in ["Degraded input", "HE", "AHE", "CLAHE", "Ours (2D U-Net)"]:
@@ -129,7 +129,7 @@ if _paper:
                        f"<td>{m['fsim']:.3f}</td><td>{m['vif']:.3f}</td></tr>")
 
 # --- cross-validation (Stage 3) ---
-_cv = _load("cross_validation.json")
+_cv = _load("results/cross_validation.json")
 cv_txt = (f"{_cv['cv_accuracy_mean_dice']} ± {_cv['cv_accuracy_std_dice']} mean tumour Dice "
           f"across {len(_cv['per_fold_mean_tumor_dice'])} folds (folds: "
           f"{', '.join(str(d) for d in _cv['per_fold_mean_tumor_dice'])})") if _cv else "computing…"

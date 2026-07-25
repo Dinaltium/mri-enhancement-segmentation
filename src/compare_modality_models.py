@@ -68,7 +68,7 @@ def test_slices(modality):
 
 
 def main():
-    pooled = load_enh(f"enhancement_model_{GROUP}.pt")
+    pooled = load_enh(f"models/enhancement_model_{GROUP}.pt")
     if pooled is None:
         print("pooled model missing"); return
     results = {}
@@ -79,7 +79,7 @@ def main():
     print("-" * 86)
 
     for mod in MODALITIES:
-        spec = load_enh(f"enhancement_model_{GROUP}_{mod}.pt")
+        spec = load_enh(f"models/enhancement_model_{GROUP}_{mod}.pt")
         sls = test_slices(mod)
         if not sls:
             continue
@@ -121,7 +121,7 @@ def main():
     results["_verdict"] = verdict
     results["_note"] = ("Both models evaluated on the SAME held-out per-modality test slices "
                         "with identical synthetic degradation, so the comparison is fair.")
-    with open("modality_comparison.json", "w") as f:
+    with open("results/modality_comparison.json", "w") as f:
         json.dump(results, f, indent=2)
     print("[compare] wrote modality_comparison.json")
 

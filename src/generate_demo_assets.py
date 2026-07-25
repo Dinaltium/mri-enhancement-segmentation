@@ -54,7 +54,7 @@ def load_enh(ck):
 
 
 def load_seg():
-    c = torch.load("segmentation_model.pt", map_location=DEV)
+    c = torch.load("models/segmentation_model.pt", map_location=DEV)
     m = SegmentationUNet(num_classes=4, in_channels=4, base_filters=c.get("base_filters", 32)).to(DEV).eval()
     m.load_state_dict(c["model_state_dict"]); return m
 
@@ -275,7 +275,7 @@ def main():
         if "flair" in c["modalities"]:
             sls = extract_training_slices(c["modalities"]["flair"])
             if len(sls) > 20:
-                five_panel(sls[len(sls)//2], load_enh("enhancement_model_brain.pt"),
+                five_panel(sls[len(sls)//2], load_enh("models/enhancement_model_brain.pt"),
                            "Brain MRI (FLAIR) — Enhancement: classical methods vs our AI",
                            os.path.join(OUT, "enhancement_compare_brain.png")); break
     _, spine_test = split_offline_cases(OFFLINE_ROOTS["spine_normal"])
@@ -285,7 +285,7 @@ def main():
         for p in info["buckets"].get("T2", []):
             sls = extract_training_slices(load_volume(p))
             if len(sls) > 5:
-                five_panel(sls[len(sls)//2], load_enh("enhancement_model_spine_normal.pt"),
+                five_panel(sls[len(sls)//2], load_enh("models/enhancement_model_spine_normal.pt"),
                            "Spine MRI (T2) — Enhancement: classical methods vs our AI",
                            os.path.join(OUT, "enhancement_compare_spine.png")); done = True; break
         if done:

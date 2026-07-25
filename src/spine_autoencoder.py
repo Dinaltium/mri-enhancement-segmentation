@@ -37,7 +37,7 @@ from offline_dataset import OFFLINE_ROOTS, find_offline_cases, classify_case_fil
 from ssim import SSIMLoss
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-CKPT = "spine_autoencoder.pt"
+CKPT = "models/spine_autoencoder.pt"
 
 
 class ConvAutoencoder(nn.Module):

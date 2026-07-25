@@ -88,7 +88,7 @@ def main() -> None:
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--img_size", type=int, default=224)
     parser.add_argument("--base_filters", type=int, default=32)
-    parser.add_argument("--out", default="benchmark_results.json")
+    parser.add_argument("--out", default="results/benchmark_results.json")
     args = parser.parse_args()
 
     if args.devices:

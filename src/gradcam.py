@@ -83,7 +83,7 @@ def cam_overlay(gray_slice: np.ndarray, cam: np.ndarray) -> np.ndarray:
     return out
 
 
-def load_seg(ckpt="segmentation_model.pt", device=None):
+def load_seg(ckpt="models/segmentation_model.pt", device=None):
     device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
     c = torch.load(ckpt, map_location=device)
     m = SegmentationUNet(num_classes=c.get("num_classes", 4),

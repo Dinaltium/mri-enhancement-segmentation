@@ -104,7 +104,7 @@ def main() -> None:
         # modality-specific run (e.g. spine_normal + T2) gets its own tag/files,
         # so per-modality models never overwrite the pooled one
         tag = f"{tag}_{'-'.join(sorted(mod_filter))}"
-    out_path = args.out or f"enhancement_model_{tag}.pt"
+    out_path = args.out or f"models/enhancement_model_{tag}.pt"
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     use_amp = (not args.no_amp) and device.type == "cuda"
@@ -193,7 +193,7 @@ def main() -> None:
         "three_way_iqa": cmp,
         "note": "input=degraded (no enhancement), clahe=classical baseline, model=trained U-Net",
     }
-    out_json = f"enhancement_metrics_{tag}.json"
+    out_json = f"results/enhancement_metrics_{tag}.json"
     with open(out_json, "w") as f:
         json.dump(summary, f, indent=2)
     print(f"[enh_offline:{tag}] saved -> {out_json}")

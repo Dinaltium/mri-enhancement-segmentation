@@ -77,7 +77,7 @@ def main():
         "cv_accuracy_std_dice": round(float(np.std(fold_dice)), 4),
         "per_fold_per_class": per_class,
     }
-    with open("cross_validation.json", "w") as f:
+    with open("results/cross_validation.json", "w") as f:
         json.dump(result, f, indent=2)
     print(f"\n[cv] CROSS-VALIDATION ACCURACY: {result['cv_accuracy_mean_dice']:.3f} "
           f"+/- {result['cv_accuracy_std_dice']:.3f} mean tumour Dice across {K} folds")

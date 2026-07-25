@@ -56,7 +56,7 @@ def _load_enh(path):
     return m
 
 
-def _load_seg(path="segmentation_model.pt"):
+def _load_seg(path="models/segmentation_model.pt"):
     if path in _MODELS:
         return _MODELS[path]
     c = torch.load(path, map_location=DEVICE)
@@ -68,7 +68,7 @@ def _load_seg(path="segmentation_model.pt"):
     return m
 
 
-ENH_CKPT = {"brain": "enhancement_model_brain.pt", "spine": "enhancement_model_spine_normal.pt"}
+ENH_CKPT = {"brain": "models/enhancement_model_brain.pt", "spine": "models/enhancement_model_spine_normal.pt"}
 
 _AE_CACHE = {}
 
@@ -85,7 +85,7 @@ def pick_enh_ckpt(region: str, filename: str) -> tuple[str, str]:
         except Exception:
             mod = None
         if mod in ("T1", "T2", "STIR"):
-            cand = f"enhancement_model_spine_normal_{mod}.pt"
+            cand = f"models/enhancement_model_spine_normal_{mod}.pt"
             if os.path.exists(cand):
                 return cand, f"spine {mod}-specific model"
         return ENH_CKPT["spine"], "spine pooled model (modality not identified)"

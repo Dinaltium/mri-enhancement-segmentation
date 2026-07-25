@@ -79,7 +79,7 @@ def iqa(clean, test):
 
 
 def main():
-    model = load_enh("enhancement_model_brain.pt")
+    model = load_enh("models/enhancement_model_brain.pt")
     slices = []
     for cd in find_brats_cases("data/brats_subset"):
         c = load_brats_case(cd)
@@ -137,7 +137,7 @@ def main():
     print(f"\nOurs improves PSNR by {results['_improvement_over_degraded']['psnr_db_gain']} dB "
           f"and SSIM by {results['_improvement_over_degraded']['ssim_gain']} over the degraded input; "
           f"every classical baseline scores BELOW the degraded input on SSIM.")
-    with open("paper_comparison.json", "w") as f:
+    with open("results/paper_comparison.json", "w") as f:
         json.dump(results, f, indent=2)
     print("[paper-cmp] wrote paper_comparison.json")
 

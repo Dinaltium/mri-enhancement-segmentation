@@ -125,7 +125,7 @@ def main() -> None:
     for k, v in full_metrics.items():
         print(f"    {k}: {v:.4f}")
 
-    with open("enhancement_metrics.json", "w") as f:
+    with open("results/enhancement_metrics.json", "w") as f:
         json.dump(full_metrics, f, indent=2)
     print("[train_enhancement] saved -> enhancement_metrics.json (put these numbers in your report)")
 

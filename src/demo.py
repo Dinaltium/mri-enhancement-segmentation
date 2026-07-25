@@ -192,23 +192,23 @@ def main():
     dataset_properties_chart()
 
     # brain enhancement demo (model trained on BraTS FLAIR)
-    if os.path.exists("enhancement_model_brain.pt"):
+    if os.path.exists("models/enhancement_model_brain.pt"):
         clean = pick_brain_flair(args.brats_root)
         if clean is not None:
-            four_panel(clean, load_enh("enhancement_model_brain.pt"),
+            four_panel(clean, load_enh("models/enhancement_model_brain.pt"),
                        "Brain MRI (FLAIR) — AI Enhancement Demonstration",
                        os.path.join(OUT, "brain_enhancement_demo.png"))
 
     # spine enhancement demo
-    if os.path.exists("enhancement_model_spine_normal.pt"):
+    if os.path.exists("models/enhancement_model_spine_normal.pt"):
         clean = pick_spine_t2("spine_normal")
         if clean is not None:
-            four_panel(clean, load_enh("enhancement_model_spine_normal.pt"),
+            four_panel(clean, load_enh("models/enhancement_model_spine_normal.pt"),
                        "Spine MRI (T2) — AI Enhancement Demonstration",
                        os.path.join(OUT, "spine_enhancement_demo.png"))
         # real raw scan, raw vs enhanced (no synthetic degradation)
         if clean is not None:
-            real_scan_panel(load_enh("enhancement_model_spine_normal.pt"), clean,
+            real_scan_panel(load_enh("models/enhancement_model_spine_normal.pt"), clean,
                             "Real Spine Scan — Raw vs AI-Enhanced",
                             os.path.join(OUT, "real_scan_enhancement.png"))
 

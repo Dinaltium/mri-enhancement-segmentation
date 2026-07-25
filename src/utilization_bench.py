@@ -80,7 +80,7 @@ def main():
         results[name] = r
         print(f"   {name:18s} GPU util={r['gpu_util_pct_mean']}% (max {r['gpu_util_pct_max']}%) "
               f"GPU-mem util={r['gpu_mem_util_pct_mean']}% CPU util={r['cpu_util_pct_mean']}%")
-    with open("benchmark_utilization.json", "w") as f:
+    with open("results/benchmark_utilization.json", "w") as f:
         json.dump(results, f, indent=2)
     print("[util] wrote benchmark_utilization.json")
 
