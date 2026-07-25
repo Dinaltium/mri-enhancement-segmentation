@@ -5,7 +5,7 @@ title, "SAY" is the speaking note, and "IMAGE" names the exact file to upload fr
 the `images/` folder next to this document. Numbers are already final — do not
 change them, they come from measured runs.
 
-Deck length: **17 slides**, ~9 minutes.
+Deck length: **18 slides**, ~9 minutes.
 Tone: confident, plain English. The project's strength is that every claim is measured.
 
 ---
@@ -339,6 +339,35 @@ IMAGE: `images/cmp_summary.png`
 
 SAY: "We'd rather report a smaller honest number than a large invented one. Every
 figure in this deck comes from a script in the repository, and can be re-run."
+
+---
+
+## Slide 18 — Future scope *(every item tied to a number we measured)*
+
+**Each of these exists because a specific result told us it was needed.**
+
+| # | Improvement | The measurement that motivates it |
+|---|---|---|
+| 1 | **Annotate 20–30 spine slices, fine-tune a supervised head** | Our annotation-free CNN: Dice **0.38** vs reference **0.92**, and **0** numbered vertebrae |
+| 2 | **More patients** | Canal width **p = 0.089**; per-level **p = 0.141** — right direction, underpowered at 10 vs 9 |
+| 3 | **Per-pathology metrics, not one canal number** | AUC only **0.688** — herniation and degeneration don't narrow the canal, so one metric can't see them |
+| 4 | **3D instead of 2D segmentation** | Vertebrae are 3D; blocked by **6 GB** VRAM vs the documented **16 GB+** requirement |
+| 5 | Distil the pretrained model into pseudo-labels | Removes the SPINEPS dependency at inference |
+| 6 | Ensembling + test-time augmentation (brain) | Typically 1–2 Dice points; we simply didn't spend the time |
+| 7 | Boundary-aware loss | Hausdorff is our weakest metric relative to Dice → boundary quality |
+| 8 | Deterministic cuDNN kernels | CNN currently reported as **mean ± sd over 3 runs** |
+| 9 | Axial / coronal support, DICOM input, reader study | What real deployment needs; we currently decline non-sagittal |
+
+SAY: "We want to be specific rather than generic here. Every item on this list exists
+because a number told us it was needed. The top one is the biggest: naming a vertebra
+is a supervised problem, and about thirty annotated slices would let us put a supervised
+head on the features we already learned and close most of the gap to the pretrained
+model. The second is the honest reason our spine claims stop where they do — both our
+statistical tests point the right way and neither reaches significance, because twenty
+patients is not enough. That's a sample-size limit, not a method limit."
+
+IF ASKED *"what's the single most important one?"*: "Annotating a small subset. Everything
+else is incremental; that one changes what the system can output at all."
 
 ---
 
