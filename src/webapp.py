@@ -657,6 +657,52 @@ def _qualifying_spine_files(min_slices: int = 5) -> str:
     return f"<br><b>showcase/for_spineps/</b> — one full volume per patient:<br>{lst}{more}"
 
 
+# Set by _spineps_live_step so the level step can reuse the mask it already
+# computed, instead of paying for a second SPINEPS run on the same upload.
+_LEVEL_CACHE: dict = {}
+
+
+def _spine_level_step(filename: str, step_no: int = 9) -> str:
+    """Mark WHERE the canal is narrowest — localisation by measurement.
+
+    Deliberately separated from any claim of diagnosis. Our own validation says
+    the narrowing ratio does NOT reliably classify a spine as pathological
+    (AUC 0.688, p = 0.141 across 14 patients), so this step reports the tightest
+    point of this canal and nothing more. A healthy spine also has a narrowest
+    point; what matters is how narrow it is relative to that same canal.
+    """
+    cached = _LEVEL_CACHE.pop(filename, None)
+    if not cached:
+        return ""
+    img, mask2d, mask3d = cached
+    try:
+        from spine_level_analysis import analyse, overlay
+        res = analyse(mask3d)
+        if not res:
+            return ""
+        disc = res.get("nearest_disc_from_top")
+        where = (f"beside intervertebral disc <b>{disc}</b> counting from the top"
+                 if disc else f"at row <b>{res['position_px']}</b> of the canal")
+        ratio = res["narrowing_ratio"]
+        return _pstep(f"Step {step_no} · Narrowest point of the canal",
+                      _np_b64(cv2.cvtColor(overlay(img, mask2d, res), cv2.COLOR_BGR2RGB),
+                              gray=False),
+                      f'<div class="verdict v-info"><b>Where, not whether.</b> The canal '
+                      f'(amber) is tightest {where} — <b>{res["narrowest_width_px"]} px</b> '
+                      f'against a median of <b>{res["median_width_px"]} px</b> for this same '
+                      f'canal, a ratio of <b>{ratio:.2f}</b>.</div>'
+                      '<p class="note">This is a <b>measurement, not a diagnosis</b>. We '
+                      'validated whether this ratio can classify a spine as pathological and '
+                      'it <b>cannot</b> — AUC 0.688, p = 0.141 across 14 patients, which is '
+                      'not significant. Every spine, healthy or not, has a narrowest point. '
+                      'So we report where it is and how tight it is, and we let a clinician '
+                      'decide. Measured on SPINEPS\'s canal segmentation (published Dice '
+                      '0.958). Full per-patient figures: '
+                      '<code>results/spine_level_analysis.json</code>.</p>')
+    except Exception:
+        return ""
+
+
 def _spineps_live_step(raw: bytes, filename: str, step_no: int = 8) -> str:
     """SPINEPS run live on the upload, as a pipeline step.
 
@@ -686,6 +732,7 @@ def _spineps_live_step(raw: bytes, filename: str, step_no: int = 8) -> str:
         img = vol[..., k]
         img = (img - img.min()) / (np.ptp(img) + 1e-8)
         labs = sorted(int(u) for u in np.unique(m) if u > 0)
+        _LEVEL_CACHE[filename] = (img, m[..., k], m)
         base = cv2.cvtColor((img * 255).astype(np.uint8), cv2.COLOR_GRAY2BGR)
         pal = np.random.RandomState(0).randint(60, 240, (150, 3)).astype(np.uint8)
         col = np.zeros_like(base)
@@ -980,6 +1027,8 @@ def build_pipeline_result(raw: bytes, filename: str, region: str) -> str:
     # simply ends a step earlier rather than showing an error.
     if region != "brain":
         out += _spineps_live_step(raw, filename, step_no=8)
+        # localisation reuses the mask step 8 just produced
+        out += _spine_level_step(filename, step_no=9)
 
     inside = _model_internals_for(sl, ckpt)
     # spine only: the measured comparison of our methods against that model
