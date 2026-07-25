@@ -445,31 +445,103 @@ def build_pipeline_result(raw: bytes, filename: str, region: str) -> str:
                       'tissue) via SLIC-superpixel clustering — cleaner than pixel clustering.</div>')
         # Step 6 · self-supervised anomaly detection (where is the abnormality?)
         try:
-            from spine_autoencoder import anomaly_map, overlay_anomaly
-            ae, _ = _cached_ae()
-            _recon, heat = anomaly_map(ae, sl)
-            score = float(heat.mean())
-            out += _pstep("Step 6 · Reconstruction difference (research view)",
-                          _np_b64(overlay_anomaly(sl, heat), gray=False),
-                          '<div class="verdict v-info"><b>Not a diagnosis.</b> Colour shows where this '
-                          'scan departs most from the model\'s learned healthy appearance '
-                          f'(mean difference {score:.3f}). We validated this score and it does '
-                          '<b>not</b> distinguish diseased from healthy spines, so no region is '
-                          'marked as suspicious.</div>')
-            note = ('<p class="note"><b>What this is, honestly:</b> an autoencoder was trained on '
-                    '<b>normal spines only</b>, so it reconstructs a healthy-looking version of any '
-                    'scan; the difference map shows where the input departs from that. The appealing '
-                    'idea is that the difference would mark pathology. <b>We tested that claim and it '
-                    'failed</b> — across held-out cases the score for normal spines (mean 0.020) is '
-                    'actually higher than for pathological ones (0.017), AUC 0.27, i.e. worse than '
-                    'chance. The difference is driven by image texture and anatomical complexity, not '
-                    'by disease. We therefore report the map as a visualisation only and make no '
-                    'detection claim — an unvalidated detector that fires on healthy patients would be '
-                    'worse than none. Full numbers: <code>results/anomaly_validation.json</code>.</p>')
+            from spine_measurements import measure, overlay_canal, profile_plot
+            m = measure(sl)
+            s = m["summary"]
+            if s:
+                out += _pstep("Step 6 · Spinal canal delineation",
+                              _np_b64(overlay_canal(sl, m["info"]), gray=False),
+                              "Amber = the detected cerebrospinal-fluid canal; the white line is "
+                              "the measurement axis found automatically, so orientation does not "
+                              "matter. Canal detection succeeded on <b>91 of 92</b> validation "
+                              "slices.")
+                out += _pstep("Step 7 · Canal width measurement",
+                              _np_b64(profile_plot(m["profile"]), gray=False),
+                              f'<div class="verdict v-info"><b>Measurement, not a diagnosis.</b> '
+                              f'Median width <b>{s["median_width_px"]} px</b>, narrowest point '
+                              f'<b>{s["min_width_px"]} px</b>, narrowing ratio '
+                              f'<b>{s["narrowing_ratio"]}</b> (narrowest ÷ typical).</div>')
+                note = ('<p class="note"><b>Why width, and why this is honest:</b> spinal stenosis '
+                        '<i>is</i> narrowing of the canal, so canal width is the quantity a '
+                        'radiologist actually reads — a measurement we can check, not a prediction. '
+                        'The narrowing ratio compares the narrowest point to that same canal\'s own '
+                        'typical width, so it is unaffected by patient size or scan resolution. '
+                        '<b>Validation across patients:</b> pathological canals do show a lower '
+                        'narrowing ratio than normal ones (0.485 vs 0.557, AUC 0.69) — the direction '
+                        'stenosis predicts — but with only 10 vs 9 patients this is <b>not '
+                        'statistically significant</b> (p = 0.089). So we report the number and its '
+                        'trend, and stop short of any diagnostic claim. Full statistics: '
+                        '<code>results/spine_measurement_validation.json</code>.</p>')
+            else:
+                note = ('<p class="note">Canal not confidently detected on this slice, so no width '
+                        'measurement is reported rather than reporting an unreliable one.</p>')
         except Exception as e:
-            note = (f'<p class="note">ROI shown. (Reconstruction model unavailable: '
-                    f'{html.escape(str(e))} — run <code>src/spine_autoencoder.py --train</code>.)</p>')
-    return f'<div class="pipeline">{out}</div>{note}'
+            note = (f'<p class="note">ROI shown. (Canal measurement unavailable: '
+                    f'{html.escape(str(e))}.)</p>')
+    inside = _model_internals_for(sl, ckpt)
+    return f'<div class="pipeline">{out}</div>{note}{inside}'
+
+
+def _model_internals_for(sl, ckpt) -> str:
+    """Collapsible white-box view of what the enhancement U-Net did to THIS
+    upload — the same trace as the /model page, but computed on the user's own
+    scan and shown inline with the pipeline it belongs to."""
+    try:
+        from model_inspect import trace_model, capture_stages, featuremap_grid, summarise
+        model = _load_enh(ckpt)
+        x = torch.from_numpy(sl).float().view(1, 1, IMG_SIZE, IMG_SIZE).to(DEVICE)
+        rows = summarise(trace_model(model, x))
+        stages = capture_stages(model, x, {
+            "Encoder 1 — edges & texture": "backbone.enc1",
+            "Encoder 2 — local shapes": "backbone.enc2",
+            "Encoder 3 — regions": "backbone.enc3",
+            "Bottleneck — compressed understanding": "backbone.bottleneck",
+            "Decoder 2 — rebuilding detail": "backbone.dec2",
+            "Decoder 1 — final detail": "backbone.dec1",
+        })
+        total = sum(p.numel() for p in model.parameters())
+    except Exception as e:
+        return (f'<p class="note">Model trace unavailable: {html.escape(str(e))}</p>')
+
+    strips = ""
+    for label, act in stages.items():
+        g = featuremap_grid(act)
+        if g is None:
+            continue
+        c, h, w = act.shape[1], act.shape[2], act.shape[3]
+        strips += (f'<div class="mstage"><h4>{html.escape(label)}'
+                   f'<em>{c} channels · {h}x{w}</em></h4>'
+                   f'<img class="result strip" src="{_np_b64(g)}" alt="{html.escape(label)}"/></div>')
+
+    trows = "".join(
+        f'<tr><td class="num">{i}</td><td class="mono">{r["layer"]}</td><td>{r["op"]}</td>'
+        f'<td class="mono">{r["shape"]}</td><td class="num mono">{r["params"]}</td></tr>'
+        for i, r in enumerate(rows, 1))
+
+    return (f'''
+    <details class="inside">
+      <summary>Inside the model — what the network actually did to <em>this</em> scan</summary>
+      <div class="mstats" style="margin-top:14px">
+        <div><b>{total:,}</b><span>learned parameters</span></div>
+        <div><b>{len(rows)}</b><span>operations executed</span></div>
+        <div><b>{sum(1 for r in rows if r["op"] == "Conv2d")}</b><span>convolution layers</span></div>
+        <div><b>{IMG_SIZE}x{IMG_SIZE}</b><span>working resolution</span></div>
+      </div>
+      <p class="note">The strips below are the six most active feature maps at each stage,
+      captured from the forward pass that produced your Step 4 result. Early stages respond to
+      edges, deeper stages to whole regions, and the decoder rebuilds full resolution from that.</p>
+      {strips}
+      <h3 class="msub">Every operation, in execution order</h3>
+      <div class="tablewrap"><table class="mtable"><thead><tr><th>#</th><th>Layer</th>
+        <th>Operation</th><th>Output shape</th><th>Parameters</th></tr></thead>
+        <tbody>{trows}</tbody></table></div>
+      <div class="mmath" style="margin-top:16px"><div>
+        <h4>Objective minimised during training</h4>
+        <code>L = |y - ŷ|₁ + (1 - SSIM(y, ŷ))</code>
+        <p class="note">L1 drives every pixel towards the clean reference; SSIM preserves
+        structure, so the output is visually faithful and not merely numerically close.</p>
+      </div></div>
+    </details>''')
 
 
 def build_model_page() -> str:
@@ -858,6 +930,12 @@ details[open] summary::before{{content:"\\2212"}}
 .mmath code{{display:block;font-family:var(--mono);font-size:0.8125rem;background:var(--panel);
   border:1px solid var(--line);border-radius:var(--r-s);padding:9px 11px;margin-bottom:9px;
   overflow-x:auto}}
+details.inside{{margin-top:18px}}
+details.inside summary{{font-size:0.875rem}}
+details.inside summary em{{font-style:italic}}
+details.inside .mstats b{{font-size:1.125rem}}
+details.inside .mtable{{max-height:420px}}
+details.inside .tablewrap{{max-height:420px;overflow-y:auto}}
 
 @media (prefers-reduced-motion: reduce){{
   *{{transition-duration:.01ms !important;animation-duration:.01ms !important}}
@@ -913,7 +991,7 @@ details[open] summary::before{{content:"\\2212"}}
           <div class="field"><input type="file" name="mri" accept=".nii,.nii.gz,.png,.jpg,.jpeg" required></div>
           <div class="field">
             <label>Anatomy
-              <select name="region"><option value="brain">Brain</option><option value="spine">Spine</option></select>
+              <select name="region">{region_options}</select>
             </label>
             <button type="submit">Run pipeline</button>
           </div>
@@ -975,23 +1053,43 @@ details[open] summary::before{{content:"\\2212"}}
 </main></body></html>"""
 
 
-def render(result_html="", title="Result", hint="computed on the scan supplied above"):
+def render(result_html="", title="Result", hint="computed on the scan supplied above",
+           region="brain"):
+    """region: which anatomy stays selected in the dropdown (persisted per
+    browser via a cookie, so a refresh does not silently reset it to Brain)."""
     block = (f'<section id="result"><div class="sec-head"><h2>{title}</h2>'
              f'<span class="hint">{hint}</span></div>'
              f'{result_html}</section>') if result_html else ""
     cases = list_tumor_cases()
     options = "".join(f'<option value="{c}">{c}</option>' for c in cases) \
         or '<option value="">(no cases — run build_showcase.py)</option>'
+    region = region if region in ("brain", "spine") else "brain"
+    region_options = "".join(
+        f'<option value="{v}"{" selected" if v == region else ""}>{label}</option>'
+        for v, label in (("brain", "Brain"), ("spine", "Spine")))
     return PAGE.format(device=str(DEVICE).upper(), result=block, tumor_options=options,
-                       n_cases=len(cases))
+                       n_cases=len(cases), region_options=region_options)
 
 
 class Handler(BaseHTTPRequestHandler):
-    def _send(self, body, code=200):
+    def _send(self, body, code=200, set_region=None):
         self.send_response(code)
         self.send_header("Content-Type", "text/html; charset=utf-8")
+        if set_region in ("brain", "spine"):
+            # remember the anatomy choice so a refresh doesn't reset it to Brain
+            self.send_header("Set-Cookie",
+                             f"region={set_region}; Path=/; Max-Age=31536000; SameSite=Lax")
         self.end_headers()
         self.wfile.write(body.encode("utf-8"))
+
+    def _region(self):
+        """Anatomy remembered from this browser's cookie, defaulting to brain."""
+        raw = self.headers.get("Cookie", "") or ""
+        for part in raw.split(";"):
+            k, _, v = part.strip().partition("=")
+            if k == "region" and v in ("brain", "spine"):
+                return v
+        return "brain"
 
     def log_message(self, *a):
         pass  # quiet
@@ -1000,14 +1098,14 @@ class Handler(BaseHTTPRequestHandler):
         from urllib.parse import urlparse, parse_qs
         u = urlparse(self.path)
         if u.path == "/":
-            self._send(render())
+            self._send(render(region=self._region()))
         elif u.path == "/sample":
             region = parse_qs(u.query).get("region", ["brain"])[0]
             with _LOCK:
                 clean = _sample_slice(region)
                 res = build_enhancement_result(clean, region, degrade=True) if clean is not None \
                     else '<p class="note">Sample not found.</p>'
-            self._send(render(res))
+            self._send(render(res, region=self._region()))
         elif u.path == "/model":
             with _LOCK:
                 try:
@@ -1015,7 +1113,8 @@ class Handler(BaseHTTPRequestHandler):
                 except Exception as e:
                     res = f'<p class="note">Model inspection failed: {html.escape(str(e))}</p>'
             self._send(render(res, title="Inside the model",
-                              hint="traced from a live forward pass"))
+                              hint="traced from a live forward pass",
+                              region=self._region()))
         elif u.path in ("/tumor", "/tissue", "/gradcam"):
             case = parse_qs(u.query).get("case", [""])[0]
             with _LOCK:
@@ -1027,38 +1126,38 @@ class Handler(BaseHTTPRequestHandler):
                     res = build_tissue_result(case)
                 else:
                     res = build_gradcam_result(case)
-            self._send(render(res))
+            self._send(render(res, region=self._region()))
         else:
-            self._send(render('<p class="note">Not found.</p>'), 404)
+            self._send(render('<p class="note">Not found.</p>', region=self._region()), 404)
 
     def do_POST(self):
         if self.path not in ("/process", "/spine_roi", "/pipeline"):
-            self._send(render('<p class="note">Not found.</p>'), 404)
+            self._send(render('<p class="note">Not found.</p>', region=self._region()), 404)
             return
         form = cgi.FieldStorage(fp=self.rfile, headers=self.headers,
                                 environ={"REQUEST_METHOD": "POST",
                                          "CONTENT_TYPE": self.headers["Content-Type"]})
         item = form["mri"] if "mri" in form else None
         if item is None or not getattr(item, "filename", None):
-            self._send(render('<p class="note">No file uploaded.</p>'))
+            self._send(render('<p class="note">No file uploaded.</p>', region=self._region()))
             return
         raw = item.file.read()
+        region = form.getvalue("region", self._region())
         try:
             with _LOCK:
                 if self.path == "/pipeline":
-                    res = build_pipeline_result(raw, item.filename,
-                                                form.getvalue("region", "brain"))
+                    res = build_pipeline_result(raw, item.filename, region)
                 elif self.path == "/spine_roi":
                     res = build_spine_roi_result(raw, item.filename)
                 else:
-                    region = form.getvalue("region", "brain")
                     degrade = form.getvalue("degrade") is not None
                     clean = slice_from_upload(raw, item.filename)
                     res = build_enhancement_result(clean, region, degrade) if clean is not None \
                         else '<p class="note">Could not read that file. Use .nii/.nii.gz or an image.</p>'
         except Exception as e:
             res = f'<p class="note">Error: {html.escape(str(e))}</p>'
-        self._send(render(res))
+        # persist the anatomy the user actually ran, so a refresh keeps it
+        self._send(render(res, region=region), set_region=region)
 
 
 def _sample_slice(region):

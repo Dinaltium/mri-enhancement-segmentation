@@ -223,7 +223,16 @@ speed + less memory. **GradScaler** to keep fp16 training stable.
 - **Enhancement metrics?** PSNR 30.3, SSIM 0.965.
 - **Why 2D not 3D?** 3D needs 16 GB+ GPU; 2D fits our 6 GB.
 - **Preprocessing model?** None — classical CLAHE + histogram equalization.
-- **Spine segmentation?** Unsupervised SLIC-superpixel clustering (no labels allowed).
+- **Spine segmentation?** Unsupervised SLIC-superpixel clustering (no labels allowed),
+  plus **spinal-canal delineation with a width profile**.
+- **How do you handle stenosis without labels?** Stenosis is by definition canal
+  narrowing, so we *measure* canal width instead of predicting a label: segment the
+  CSF column, find its axis by PCA, sample width perpendicular to it, and report the
+  narrowing ratio (narrowest ÷ typical width of that same canal, so patient size and
+  resolution cancel out). Canal detected on **91/92** validation slices. Pathological
+  canals trend narrower (0.485 vs 0.557, AUC 0.69) but at 10 vs 9 patients this is
+  **not significant** (p = 0.089) — we report the measurement and the trend, not a
+  diagnosis.
 - **Do your spine models need annotations?** **No — none of them.** Enhancement is
   self-supervised (degrade the scan, restore it to itself), ROI is unsupervised
   clustering, lesion localisation is an autoencoder trained on healthy scans only.
