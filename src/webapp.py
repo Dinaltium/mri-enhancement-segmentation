@@ -697,9 +697,12 @@ def _spineps_live_step(raw: bytes, filename: str, step_no: int = 8) -> str:
         return _pstep(f"Step {step_no} · Named structures (SPINEPS, pretrained)",
                       _np_b64(cv2.cvtColor(ov, cv2.COLOR_BGR2RGB), gray=False),
                       f'<div class="verdict v-info"><b>{len(labs)} structures</b> named on '
-                      f'<b>your scan</b> ({how}) by a <b>pretrained</b> model — external '
-                      'training data, used with approval for this one output. Everything '
-                      'above is our own work, trained with no annotations.</div>'
+                      f'<b>your scan</b> ({how}) by <b>SPINEPS</b>, a published pretrained '
+                      'model, used with approval for this one output. <b>We did not train '
+                      'it and we used no dataset other than the one supplied</b> — we load '
+                      'its published weights, which its authors trained on their own data '
+                      'before this competition. Everything above is our own work, trained '
+                      'with no annotations.</div>'
                       f'<p class="note">{named}</p>')
     except Exception:
         return ""

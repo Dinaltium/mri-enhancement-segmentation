@@ -22,6 +22,21 @@ We use it **only for spine ROI instance segmentation**. Every other result in
 this project — all brain enhancement and segmentation, and all spine
 enhancement — is our own model trained by us.
 
+### Exactly what "pretrained" means here — please read this line
+
+**We did not obtain, download, view or train on any dataset other than the one
+supplied to us.** What we use is the published **weights file** — the learned
+numbers. Its authors trained those weights on their own data (SPIDER and the
+German National Cohort), in their own published work, *before this competition
+existed*. We load that file and run inference.
+
+So when this document says the weights "encode external data", it means exactly
+that and nothing more: the numbers in the file carry patterns their authors
+learned. It does **not** mean we brought an outside dataset into our pipeline.
+The distinction matters, because "we used a pretrained model" and "we used
+external data for training" are different claims, and only the first is true of
+us.
+
 ---
 
 ## 2. Why a pretrained model is necessary here
