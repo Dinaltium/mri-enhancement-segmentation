@@ -691,7 +691,8 @@ def _spine_level_step(filename: str, step_no: int = 9) -> str:
                       f'(amber) is tightest {where} — <b>{res["narrowest_width_px"]} px</b> '
                       f'against a median of <b>{res["median_width_px"]} px</b> for this same '
                       f'canal, a ratio of <b>{ratio:.2f}</b>.</div>'
-                      '<p class="note">This is a <b>measurement, not a diagnosis</b>. We '
+                      '<p class="note">This is a <b>measurement, not a diagnosis</b>. It '
+                      'appears only when step 8 produced a canal to measure. We '
                       'validated whether this ratio can classify a spine as pathological and '
                       'it <b>cannot</b> — AUC 0.688, p = 0.141 across 14 patients, which is '
                       'not significant. Every spine, healthy or not, has a narrowest point. '
@@ -711,9 +712,22 @@ def _spineps_live_step(raw: bytes, filename: str, step_no: int = 8) -> str:
     error card mid-sequence.
     """
     import tempfile
+
+    def skipped(why):
+        """Say why the pretrained step did not run. Silently omitting it left a
+        gap in the numbered sequence with no explanation, which reads like a
+        crash rather than a documented limitation."""
+        return _pstep(f"Step {step_no} · Named structures (SPINEPS) — not run",
+                      _np_b64(np.zeros((8, 8)), gray=True),
+                      f'<div class="verdict v-info"><b>Skipped on this scan.</b> {why}</div>'
+                      '<p class="note">Steps 1–7 above are our own work and ran normally. '
+                      'SPINEPS is trained on <b>sagittal T2-weighted</b> stacks, so it '
+                      'declines anything else rather than guessing. Try a file from '
+                      '<code>showcase/for_spineps/</code>.</p>')
+
     fn = (filename or "").lower()
     if not (fn.endswith(".nii") or fn.endswith(".nii.gz")):
-        return ""
+        return skipped("This is a 2D image; the model needs a 3D NIfTI volume.")
     suffix = ".nii.gz" if fn.endswith(".gz") else ".nii"
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
     tmp.write(raw); tmp.close()
@@ -721,11 +735,13 @@ def _spineps_live_step(raw: bytes, filename: str, step_no: int = 8) -> str:
         import nibabel as nib
         shape = nib.load(tmp.name).shape
         if len(shape) < 3 or min(shape[:3]) < 5:
-            return ""
+            return skipped(f"This volume is {shape} — too few slices through-plane "
+                           "for a 3D spine model.")
         from spineps_runner import run_semantic_live, mask_in_scan_space
         r = run_semantic_live(tmp.name, key=filename)
         if not r.get("ok"):
-            return ""
+            return skipped("The model ran but produced no mask — most often an "
+                           "<b>axial</b> or coronal scan, where it expects sagittal.")
         m = mask_in_scan_space(r["semantic"], tmp.name)
         vol = nib.load(tmp.name).get_fdata().astype(np.float32)
         k = int(np.argmax([(m[..., i] > 0).sum() for i in range(m.shape[2])]))
