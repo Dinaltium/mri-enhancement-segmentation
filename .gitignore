@@ -1,0 +1,53 @@
+# ---------------------------------------------------------------------------
+# Datasets — NEVER commit. ~17 GB total.
+# BraTS2020 must be downloaded from Kaggle (see README); the hackathon offline
+# data is provided by the organisers and is not ours to redistribute.
+# ---------------------------------------------------------------------------
+data/
+Brain DATASETS/
+Spine DATASETS/
+showcase/
+*.nii
+*.nii.gz
+
+# ---------------------------------------------------------------------------
+# Trained model weights (~31 MB each, 11 files). Regenerate with the training
+# scripts, or fetch from the release/submission archive.
+# ---------------------------------------------------------------------------
+*.pt
+*.pth
+*.ckpt
+
+# ---------------------------------------------------------------------------
+# Generated outputs — reproducible by re-running the scripts
+# ---------------------------------------------------------------------------
+outputs/
+results/
+stats/
+*.log
+
+# ---------------------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.ipynb_checkpoints/
+
+# ---------------------------------------------------------------------------
+# OS / editor
+# ---------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# ---------------------------------------------------------------------------
+# Large source documents kept out of the code repo
+# ---------------------------------------------------------------------------
+*.zip
+*.tar.gz

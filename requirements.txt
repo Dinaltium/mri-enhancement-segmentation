@@ -1,0 +1,42 @@
+# MedhaDrishti — MRI Enhancement & ROI Segmentation
+# Python 3.10+ required.
+#
+# GPU (recommended — what we developed and benchmarked on: RTX 4050 6 GB, CUDA 12.4):
+#     pip install torch==2.6.0 torchvision==0.21.0 --index-url https://download.pytorch.org/whl/cu124
+#     pip install -r requirements.txt
+#
+# CPU-only (everything runs, just slower):
+#     pip install torch==2.6.0 torchvision==0.21.0
+#     pip install -r requirements.txt
+#
+# Note: the two pyiqa-backed metric families (LPIPS, BRISQUE/NIQE/PIQE) download
+# small pretrained weight files on first use and cache them locally.
+
+# --- deep learning ---
+torch==2.6.0
+torchvision==0.21.0
+
+# --- numerical / imaging core ---
+numpy==2.2.6
+scipy==1.15.3
+opencv-python==5.0.0.93
+scikit-image==0.25.2
+Pillow==12.1.1
+
+# --- medical imaging I/O and metrics ---
+nibabel==5.4.2          # NIfTI (.nii/.nii.gz) reading — volumes are never converted
+medpy==0.5.2            # Dice, Jaccard, Hausdorff, average surface distance
+pyiqa==0.1.16           # PSNR, SSIM, FSIM, GMSD, VIF, LPIPS, BRISQUE, NIQE, PIQE
+
+# --- clustering (unsupervised spine / tissue segmentation) ---
+scikit-learn==1.7.2
+
+# --- results, export, reporting ---
+matplotlib==3.10.8
+pycocotools==2.0.11     # COCO JSON mask export (RLE encoding)
+
+# --- benchmarking (GPU/CPU utilisation sampling) ---
+psutil==7.2.2
+
+# The demo web application (src/webapp.py) uses only the Python standard
+# library (http.server) — no Flask or other web framework is required.
