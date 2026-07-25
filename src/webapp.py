@@ -657,6 +657,59 @@ def _qualifying_spine_files(min_slices: int = 5) -> str:
     return f"<br><b>showcase/for_spineps/</b> — one full volume per patient:<br>{lst}{more}"
 
 
+def _spineps_live_step(raw: bytes, filename: str, step_no: int = 8) -> str:
+    """SPINEPS run live on the upload, as a pipeline step.
+
+    Returns "" when the scan cannot be processed (2D export, wrong format,
+    SPINEPS unavailable) so the pipeline degrades quietly instead of showing an
+    error card mid-sequence.
+    """
+    import tempfile
+    fn = (filename or "").lower()
+    if not (fn.endswith(".nii") or fn.endswith(".nii.gz")):
+        return ""
+    suffix = ".nii.gz" if fn.endswith(".gz") else ".nii"
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
+    tmp.write(raw); tmp.close()
+    try:
+        import nibabel as nib
+        shape = nib.load(tmp.name).shape
+        if len(shape) < 3 or min(shape[:3]) < 5:
+            return ""
+        from spineps_runner import run_semantic_live, mask_in_scan_space
+        r = run_semantic_live(tmp.name, key=filename)
+        if not r.get("ok"):
+            return ""
+        m = mask_in_scan_space(r["semantic"], tmp.name)
+        vol = nib.load(tmp.name).get_fdata().astype(np.float32)
+        k = int(np.argmax([(m[..., i] > 0).sum() for i in range(m.shape[2])]))
+        img = vol[..., k]
+        img = (img - img.min()) / (np.ptp(img) + 1e-8)
+        labs = sorted(int(u) for u in np.unique(m) if u > 0)
+        base = cv2.cvtColor((img * 255).astype(np.uint8), cv2.COLOR_GRAY2BGR)
+        pal = np.random.RandomState(0).randint(60, 240, (150, 3)).astype(np.uint8)
+        col = np.zeros_like(base)
+        for u in labs:
+            col[m[..., k] == u] = pal[u % 150]
+        ov = cv2.addWeighted(base, 1.0, col, 0.55, 0)
+        named = " · ".join(f"<b>{u}</b> {SPINEPS_LABELS.get(u, '?')}" for u in labs)
+        how = "cached" if r.get("cached") else f"live on GPU in {r.get('seconds', 0):.0f} s"
+        return _pstep(f"Step {step_no} · Named structures (SPINEPS, pretrained)",
+                      _np_b64(cv2.cvtColor(ov, cv2.COLOR_BGR2RGB), gray=False),
+                      f'<div class="verdict v-info"><b>{len(labs)} structures</b> named on '
+                      f'<b>your scan</b> ({how}) by a <b>pretrained</b> model — external '
+                      'training data, used with approval for this one output. Everything '
+                      'above is our own work, trained with no annotations.</div>'
+                      f'<p class="note">{named}</p>')
+    except Exception:
+        return ""
+    finally:
+        try:
+            os.unlink(tmp.name)
+        except Exception:
+            pass
+
+
 def build_spineps_live(raw: bytes, filename: str) -> str:
     """Run the pretrained model live, on the GPU, on the uploaded spine scan.
 
@@ -918,9 +971,15 @@ def build_pipeline_result(raw: bytes, filename: str, region: str) -> str:
         except Exception as e:
             note = (f'<p class="note">ROI shown. (Canal measurement unavailable: '
                     f'{html.escape(str(e))}.)</p>')
+    # spine only: run the pretrained model on THIS scan as a further step, so the
+    # pipeline shows our own annotation-free work and the pretrained result side
+    # by side on the same upload. Returns "" for 2D exports, so the pipeline
+    # simply ends a step earlier rather than showing an error.
+    if region != "brain":
+        out += _spineps_live_step(raw, filename, step_no=8)
+
     inside = _model_internals_for(sl, ckpt)
-    # spine only: show what a model trained on external labels achieves, and
-    # our measured distance from it
+    # spine only: the measured comparison of our methods against that model
     ref = f'<div class="pipeline">{_spineps_reference_block()}</div>' \
         if region != "brain" else ""
     return f'<div class="pipeline">{out}</div>{note}{inside}{ref}'
