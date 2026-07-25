@@ -48,7 +48,7 @@ a limitation of effort — it is a property of the problem as specified.
 ## 3. What we tried first, and what it showed
 
 We did not reach for a pretrained model as a shortcut. We implemented and
-**measured** three annotation-free approaches first, and the evidence for each
+**measured** four annotation-free approaches first, and the evidence for each
 is in `results/`:
 
 **a) Intensity clustering (k-means, then SLIC superpixels).** Works, and it is
@@ -95,7 +95,31 @@ available data is standard practice in medical imaging, for three reasons:
 
 ---
 
-## 5. How we report it — the provenance is never hidden
+## 5. What it actually produced on our data
+
+Run on spine case **SP11** (sagittal T2w, 512x512x12):
+
+| Phase | Result |
+|---|---|
+| Semantic | **13 structures** — vertebral subregions (labels 41–49), intervertebral discs, spinal canal, spinal cord (60–62, 100) |
+| Instance | **17 individually numbered vertebrae** |
+| Runtime | 401 s total (instance phase on CPU — see `SPINEPS_SETUP.md`) |
+
+Both masks are returned on SPINEPS's own resampled, reoriented grid, so they
+are mapped back onto the original scan through the image affine
+(`spineps_runner.mask_in_scan_space`) before display. Matching by array index
+instead produces a visibly offset overlay — a rendering error rather than a
+segmentation error, but one worth naming since the figures depend on it.
+
+The comparison figure `outputs/demo/spine_method_comparison.png` shows all of
+this on **one slice**: intensity clustering groups brightness and cannot
+separate adjacent vertebrae; our self-supervised CNN resolves the cord,
+vertebral chain and soft tissue as distinct structures without annotations;
+SPINEPS adds the numbered per-vertebra instances that neither can reach.
+
+---
+
+## 6. How we report it — the provenance is never hidden
 
 - SPINEPS output is **always labelled as a pretrained model with external
   training data**, in the demo, the figures and the report.
@@ -111,7 +135,7 @@ available data is standard practice in medical imaging, for three reasons:
 
 ---
 
-## 6. Summary
+## 7. Summary
 
 > We use SPINEPS for per-vertebra spine instance segmentation because that
 > output is supervised by nature and cannot be learned from an unlabelled

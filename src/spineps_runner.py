@@ -85,10 +85,41 @@ def run(nifti_path: str, out_dir: str = None, timeout: int = 1800) -> dict:
             "error": None if ok else "no mask produced — see stderr"}
 
 
-def instance_slice(instance_path: str, z: int = None) -> np.ndarray:
-    """Mid-sagittal slice of the instance mask, as an integer label map."""
+def mask_in_scan_space(mask_path: str, scan_path: str) -> np.ndarray:
+    """Resample a SPINEPS mask back into the ORIGINAL scan's voxel grid.
+
+    Necessary because SPINEPS does not return the mask on the input grid: it
+    resamples to ~0.8 mm isotropic AND reorients to a canonical axis order
+    before inference (measured: a 512x512x12 input came back as 503x503x53).
+    Matching masks to the scan by array index therefore produces an overlay
+    that is visibly offset and rotated — that failure is a rendering error,
+    not a segmentation error.
+
+    The affine of each image maps its voxel indices to the same physical
+    (scanner) space, so composing the two affines maps mask voxels onto scan
+    voxels correctly regardless of resolution or orientation. Nearest-neighbour
+    only: these are integer labels, interpolation would invent new ones.
+    """
     import nibabel as nib
-    vol = nib.load(instance_path).get_fdata()
+    from nibabel.processing import resample_from_to
+    m, s = nib.load(mask_path), nib.load(scan_path)
+    r = resample_from_to(m, (s.shape[:3], s.affine), order=0, cval=0)
+    return np.asarray(r.dataobj).astype(np.int32)
+
+
+def instance_slice(instance_path: str, z: int = None,
+                   scan_path: str = None) -> np.ndarray:
+    """Mid-sagittal slice of the instance mask, as an integer label map.
+
+    Pass `scan_path` whenever the slice will be drawn over the original scan —
+    without it the mask stays in SPINEPS's own resampled space and will not
+    line up. See mask_in_scan_space().
+    """
+    import nibabel as nib
+    if scan_path:
+        vol = mask_in_scan_space(instance_path, scan_path)
+    else:
+        vol = nib.load(instance_path).get_fdata()
     if vol.ndim == 2:
         return vol.astype(np.int32)
     # pick the slice carrying the most labelled voxels

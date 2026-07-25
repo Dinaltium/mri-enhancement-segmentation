@@ -81,6 +81,38 @@ python src/spineps_runner.py "path/to/scan_T2w.nii.gz"
 | `instance_slice(path)` | mid-sagittal slice of the instance mask as a label map |
 | `overlay(img, inst)` | per-vertebra colouring with each vertebra numbered |
 
+### Important: the instance phase needs more than 6 GB of VRAM
+
+On a 6 GB card the semantic phase completes normally and the **instance phase
+fails**:
+
+```
+torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 296.00 MiB.
+GPU 0 has a total capacity of 6.00 GiB of which 0 bytes is free.
+Of the allocated memory 12.44 GiB is allocated by PyTorch
+```
+
+**Downsampling the input does not help, and it is worth knowing why.** The
+instance phase does not read the input scan — it reads the *semantic mask
+SPINEPS just saved*, which is written in SPINEPS's own internal space
+(measured: 0.75 mm, 512x512x53) whatever the input resolution was. Feeding it a
+3.6x smaller volume produced a byte-identical 12.44 GiB failure.
+
+The fix is to run that phase on CPU:
+
+```bash
+spineps sample -i scan_T2w.nii.gz -model_semantic t2w -model_instance instance -cpu
+```
+
+Measured on this project's hardware: **401 s total**, of which 6 min 10 s was
+the 16 vertebra-body forward passes (~25 s each). If a semantic mask already
+exists from an earlier GPU run it is reused automatically, so only the instance
+phase repeats.
+
+> Note: `spineps sample -h` raises an `AssertionError` inside argparse — a bug
+> in their help formatter, not in the install. Read the flags from
+> `spineps/entrypoint.py` instead.
+
 ---
 
 ## Input requirements

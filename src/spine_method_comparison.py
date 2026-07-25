@@ -37,11 +37,42 @@ def _ov(img01, labels, colour_fn=None):
     return cv2.cvtColor(cv2.addWeighted(base, 0.7, col, 0.6, 0), cv2.COLOR_BGR2RGB)
 
 
-def build(nifti_path: str, spineps_instance: str = None):
+def _pick_slice(nifti_path: str, spineps_instance: str = None):
+    """Return (image_slice_in_[0,1], instance_label_map_or_None) on ONE common
+    slice. The figure's whole claim is that every method is shown on the same
+    slice, so the SPINEPS panel cannot be allowed to drift to a different z:
+    when a mask is supplied, the slice it labels most densely is the one every
+    panel uses.
+    """
     sls = extract_training_slices(load_volume(nifti_path))
     if not sls:
+        return None, None
+    if not (spineps_instance and os.path.exists(spineps_instance)):
+        return sls[len(sls) // 2], None
+
+    from spineps_runner import mask_in_scan_space
+    vol = load_volume(nifti_path)
+    m = mask_in_scan_space(spineps_instance, nifti_path)
+    ax = int(np.argmin(m.shape))
+    counts = [(np.take(m, z, axis=ax) > 0).sum() for z in range(m.shape[ax])]
+    z = int(np.argmax(counts))
+    img = np.squeeze(np.take(vol, z, axis=int(np.argmin(vol.shape)))).astype(np.float32)
+    img = (img - img.min()) / (np.ptp(img) + 1e-8)
+    # NIfTI voxel axes are not display axes: taken raw, a sagittal spine comes
+    # out lying on its side. Rotate image and mask together so the rotation
+    # cannot desynchronise them.
+    img, inst = np.rot90(img), np.rot90(np.take(m, z, axis=ax))
+    size = sls[0].shape[0]
+    img = np.clip(cv2.resize(img, (size, size), interpolation=cv2.INTER_CUBIC), 0, 1)
+    inst = cv2.resize(np.ascontiguousarray(inst).astype(np.int32), (size, size),
+                      interpolation=cv2.INTER_NEAREST)
+    return img.astype(np.float32), inst
+
+
+def build(nifti_path: str, spineps_instance: str = None):
+    img, inst = _pick_slice(nifti_path, spineps_instance)
+    if img is None:
         print("no usable slices"); return
-    img = sls[len(sls) // 2]
     enh = clahe_enhance(img)
 
     panels = [("Original", cv2.cvtColor((img * 255).astype(np.uint8), cv2.COLOR_GRAY2RGB), None)]
@@ -59,11 +90,11 @@ def build(nifti_path: str, spineps_instance: str = None):
     except Exception as e:
         print("deep segmentation unavailable:", e)
 
-    if spineps_instance and os.path.exists(spineps_instance):
+    if inst is not None:
         try:
-            from spineps_runner import instance_slice, overlay as sp_overlay
-            inst = instance_slice(spineps_instance)
-            panels.append(("SPINEPS\n(pretrained reference)",
+            from spineps_runner import overlay as sp_overlay
+            n_v = len([u for u in np.unique(inst) if u > 0])
+            panels.append((f"SPINEPS\n({n_v} vertebrae, pretrained)",
                            cv2.cvtColor(sp_overlay(enh, inst), cv2.COLOR_BGR2RGB),
                            "external weights"))
         except Exception as e:
