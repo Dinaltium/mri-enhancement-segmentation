@@ -5,7 +5,7 @@ title, "SAY" is the speaking note, and "IMAGE" names the exact file to upload fr
 the `images/` folder next to this document. Numbers are already final — do not
 change them, they come from measured runs.
 
-Deck length: **16 slides**, ~8 minutes.
+Deck length: **17 slides**, ~9 minutes.
 Tone: confident, plain English. The project's strength is that every claim is measured.
 
 ---
@@ -256,7 +256,41 @@ IMAGE: `images/spine_method_comparison.png`
 
 ---
 
-## Slide 14 — One model per sequence beats one model for all
+## Slide 14 — We measured the gap instead of asserting it *(new — strongest spine slide)*
+
+**We used the pretrained model as a reference standard and scored our own work against it.**
+
+| Structure | k-means | SLIC | **Ours (self-sup. CNN)** |
+|---|---|---|---|
+| Vertebral bodies | 0.263 | 0.204 | **0.257 ± 0.018** |
+| Intervertebral discs | 0.047 | 0.047 | **0.090 ± 0.017** |
+| Spinal canal + cord | 0.304 | 0.302 | **0.380 ± 0.041** |
+| Posterior elements | 0.071 | 0.097 | **0.169 ± 0.032** |
+
+**Ours wins on precision in all four structures** — 0.310 vs 0.194 on the canal,
+0.116 vs 0.038 on posterior elements. The classical methods have high recall and
+terrible precision: they *find* the structure, then bleed across the whole image.
+
+**And we state the gap plainly:** our best is Dice **0.38** against SPINEPS's published
+**0.92**, and ours numbers **zero** vertebrae. That is the justification, quantified.
+
+SAY: "Rather than just claiming our method is good, we scored it. We used the pretrained
+model as a reference standard and measured how much our annotation-free work recovers
+without ever seeing a label. Two things came out. Ours is the best of the label-free
+methods — highest precision on all four structures. And ours is still far from the
+reference, and numbers zero vertebrae, because numbering needs labels. We report both
+halves. The second half is exactly why we use a pretrained model for that one output."
+
+IF ASKED *"isn't that Dice very low?"*: "Yes, and there are two honest reasons.
+Unsupervised clusters are anonymous and spill past structure edges — that's the
+precision number. And the metric itself is an upper bound: the reference has to pick
+which of our unnamed clusters to grade, because we never gave the method a target."
+
+IMAGE: `images/spine_vs_spineps.png`
+
+---
+
+## Slide 15 — One model per sequence beats one model for all
 
 | Sequence | Pooled model | **Per-sequence (ours)** |
 |---|---|---|
@@ -272,7 +306,7 @@ IMAGE: `images/cmp_modality.png`
 
 ---
 
-## Slide 15 — Efficiency & validation
+## Slide 16 — Efficiency & validation
 
 | Metric | Value |
 |---|---|
@@ -291,7 +325,7 @@ IMAGE: `images/segmentation_curves.png`
 
 ---
 
-## Slide 16 — Summary & honesty
+## Slide 17 — Summary & honesty
 
 **Four measured claims**
 
@@ -334,3 +368,54 @@ claim; a minimum-region-size guard suppresses single-pixel noise.
 
 **Is it overfitting?** No — validation tracks training, gap ≈ 0, converged at epoch 25,
 and 3-fold cross-validation agrees to ±0.04.
+
+---
+
+### Spine / pretrained-model questions
+
+**Did you train SPINEPS?** No. We supply it no annotations and do not train it. We run
+published weights and label its provenance everywhere it appears.
+
+**What was it trained on?** The public SPIDER dataset plus the German National Cohort —
+about 1,600+ annotated subjects. That external labelled data is exactly what we lack and
+are not permitted to collect.
+
+**What are its published numbers?** Dice 0.92 vertebrae, 0.967 discs, 0.958 canal — on
+**their** test set. We claim none of it.
+
+**What did it produce on our data?** 13 semantic structures and **17 numbered
+vertebrae** on case SP11, in 401 seconds.
+
+**What do the numbers 1–17 on the vertebrae mean?** Instance IDs — "this is a separate
+bone from the one above it." Not a diagnosis, not a severity score, not an anatomical
+name.
+
+**What do the mask values 41–49, 60, 61, 62, 100 mean?** Structure types: **49**
+vertebral body, **60** spinal cord, **61** spinal canal, **100** intervertebral disc,
+**41–48** the arch and processes behind the body.
+
+**Semantic vs instance — what's the difference?** Semantic says *what kind* of tissue a
+pixel is; two neighbouring vertebrae get the same label. Instance says *which one*. The
+instance step is the part that needs labels.
+
+**Isn't using a pretrained model against the rules?** The organisers approved a public
+pretrained model and asked us to justify it. Our own annotation-free pipeline is shown
+beside it, never replaced by it, and we use it for one output only.
+
+**Which parts are yours?** All brain enhancement and segmentation, all spine
+enhancement, the self-supervised CNN segmentation, the canal morphometry, and every
+validation. Not ours: the SPINEPS masks, labelled as pretrained everywhere.
+
+**Isn't your spine Dice very low?** Yes — 0.38 at best. Two honest reasons: unsupervised
+clusters are anonymous and bleed past structure edges (precision 0.19–0.31), and the
+metric is an upper bound because the reference has to pick which unnamed cluster to
+grade. We report it rather than hide it — the gap is the argument.
+
+**Why is the CNN reported as mean ± sd?** It is stochastic. It is seeded, but cuDNN
+picks nondeterministic kernels, so runs differ. One number would not be reproducible, so
+we report three runs.
+
+**What would you improve?** Top of the list: annotate 20–30 slices and fine-tune a
+supervised head on our existing features — that turns anonymous regions into named
+structures. Then 3D instead of 2D (blocked by 6 GB VRAM), and distilling SPINEPS output
+into pseudo-labels so instance numbering no longer needs SPINEPS at inference.

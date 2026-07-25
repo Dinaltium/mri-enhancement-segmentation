@@ -226,6 +226,68 @@ pathological spine; centre, the model's healthy reconstruction; right, the diffe
 map. Presented as a visualisation only — validation showed the score does not
 distinguish pathological from normal spines.*
 
+### 4.5 Spine ROI segmentation measured against a reference standard
+
+Because the spine data carries no annotation, our own segmentation cannot be scored
+against ground truth. We therefore use the pretrained model as an independent
+**reference standard** and quantify how much our annotation-free methods recover
+without ever seeing a label. This makes the case for the pretrained component
+empirical rather than rhetorical.
+
+Evaluated on case SP11, slice 5. The self-supervised CNN is stochastic — it is seeded,
+but cuDNN selects nondeterministic kernels — so its figures are the mean ± standard
+deviation over three runs.
+
+| Structure | k-means | SLIC | **Self-supervised CNN (ours)** |
+|---|---|---|---|
+| Vertebral bodies | 0.263 | 0.204 | **0.257 ± 0.018** |
+| Intervertebral discs | 0.047 | 0.047 | **0.090 ± 0.017** |
+| Spinal canal + cord | 0.304 | 0.302 | **0.380 ± 0.041** |
+| Posterior elements | 0.071 | 0.097 | **0.169 ± 0.032** |
+
+*Dice against the reference standard.* Separating precision from recall is what makes
+these numbers interpretable: the classical methods reach high recall (k-means 0.807 on
+vertebral bodies) at very low precision (0.157), meaning they locate the structure but
+their clusters flood far past its boundary — the expected failure of grouping by
+brightness. Our CNN attains the **highest precision of the three methods on all four
+structures** (0.191 / 0.050 / 0.310 / 0.116) and the best Dice on three of four, with
+vertebral bodies a tie within uncertainty.
+
+Two methodological points are stated explicitly. First, these Dice values are
+**oracle-assisted upper bounds**: unsupervised methods produce anonymous cluster
+indices, so the reference must select which cluster to score. The figure therefore
+answers "was this structure isolated as a distinct region?" and not "can the method
+name it?" — naming being precisely the supervised step the data cannot supply. Second,
+we tested whether the metric unfairly penalises methods producing more clusters (ours
+yields 9–10, k-means 4, so no single cluster can span a whole structure) by adding a
+greedy best-union score; it changed the result by 0.002, so the concern was measured
+and rejected rather than assumed away.
+
+The conclusion the table supports is deliberately two-sided. Our annotation-free CNN is
+the strongest of the label-free methods, and it is meaningfully better than the
+classical baselines on precision. It is also far from the reference: best Dice 0.380
+against SPINEPS's published 0.920, and zero numbered vertebrae, because numbering
+requires labels we do not have. That measured gap is the justification for using a
+pretrained model for that single output.
+
+**[FIGURE 5 — `images/spine_vs_spineps.png`]**
+*Caption: Our annotation-free methods scored against the pretrained reference. Left,
+Dice by structure with the reference's published accuracy marked; centre, precision,
+where our CNN leads on all four structures; right, what external labels buy — named and
+numbered vertebrae our methods cannot produce.*
+
+**[FIGURE 6 — `images/spine_method_comparison.png`]**
+*Caption: Every spine method on one slice. Intensity clustering floods the background
+because it groups brightness and cannot separate adjacent vertebrae; our self-supervised
+CNN resolves cord, vertebral chain and soft tissue without annotations; SPINEPS adds the
+17 numbered instances neither reaches.*
+
+Applied to case SP11, the pretrained model produced 13 semantic structures (vertebral
+subregions, discs, canal, cord) and 17 individually numbered vertebrae, in 401 s. Both
+masks are returned on its own resampled and reoriented grid and are mapped back onto the
+original scan through the image affine; matching by array index instead yields a
+visibly rotated overlay.
+
 ---
 
 ## 5. Conclusion and limitations
@@ -243,7 +305,9 @@ inventing figures. Second, our autoencoder-based spine anomaly detector failed v
 the claim was withdrawn. Our own spine contributions are therefore restoration,
 self-supervised region segmentation and canal morphometry; per-vertebra instance
 segmentation is provided by a pretrained model (§3.4), clearly attributed, because that
-output cannot be learned from unlabelled data. Third, the restoration model corrects noise
+output cannot be learned from unlabelled data — a gap we quantify rather than assert
+(§4.5: our best Dice 0.380 against the reference's published 0.920, and zero numbered
+vertebrae). Third, the restoration model corrects noise
 and intensity artefacts only; it does not synthesise anatomy, and the SSIM above 0.9
 against the reference scan is the evidence for that claim.
 

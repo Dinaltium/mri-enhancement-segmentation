@@ -364,6 +364,86 @@ def _np_b64(img, gray=True):
     return "data:image/png;base64," + base64.b64encode(buf.tobytes()).decode()
 
 
+def _file_b64(path: str) -> str | None:
+    """Inline a PNG from disk as a data URI (this server serves no static files)."""
+    try:
+        with open(path, "rb") as f:
+            return "data:image/png;base64," + base64.b64encode(f.read()).decode()
+    except Exception:
+        return None
+
+
+# Label meanings for the SPINEPS semantic mask (TPTBox vert_constants).
+# Kept here so the demo can answer "what do the numbers mean?" without a lookup.
+SPINEPS_LABELS = {
+    41: "Arcus vertebrae (vertebral arch)", 42: "Spinous process",
+    43: "Costal process, left", 44: "Costal process, right",
+    45: "Superior articular process, left", 46: "Superior articular process, right",
+    47: "Inferior articular process, left", 48: "Inferior articular process, right",
+    49: "Vertebral body (corpus)", 60: "Spinal cord", 61: "Spinal canal",
+    62: "Endplate", 100: "Intervertebral disc",
+}
+
+
+def _spineps_reference_block() -> str:
+    """Precomputed SPINEPS result plus the measured comparison against our own
+    annotation-free methods.
+
+    Deliberately NOT run on the uploaded scan: the instance phase takes 401 s on
+    CPU (it exceeds 6 GB of VRAM on GPU), which is not a demo interaction. It is
+    presented as a fixed reference result on a named case, and labelled as such,
+    rather than implying the upload was processed by it.
+    """
+    inst = _file_b64("outputs/demo/spineps_instances.png")
+    sem = _file_b64("outputs/demo/spineps_semantic.png")
+    cmp_fig = _file_b64("outputs/demo/spine_vs_spineps.png")
+    methods_fig = _file_b64("outputs/demo/spine_method_comparison.png")
+    if not (inst or cmp_fig):
+        return ""
+
+    out = ('<h3 class="sec">Reference standard — how good is ours, really?</h3>'
+           '<p class="note">Everything above ran on <b>your upload</b> with no annotations. '
+           'This section is different: it is a <b>fixed, precomputed result on case SP11</b>, '
+           'shown so our own output can be judged against something with published accuracy. '
+           'It was <b>not</b> run on your scan — the instance phase takes 401 s on CPU.</p>')
+
+    if inst:
+        rows = " · ".join(f"<b>{k}</b> {v}" for k, v in list(SPINEPS_LABELS.items())[:6])
+        out += _pstep("SPINEPS · per-vertebra instances (pretrained)", inst,
+                      'Each colour is <b>one vertebra, individually numbered</b> — 17 of them. '
+                      'The numbers are <b>instance IDs</b>: they say "this is a separate bone '
+                      'from the one above it", they are not a diagnosis and not a severity score. '
+                      'A separate semantic pass labels <b>13 structure types</b> — e.g. ' + rows +
+                      ' — vertebral body, disc, canal and cord among them.')
+    if sem:
+        out += _pstep("SPINEPS · 13 named structures (semantic pass)", sem,
+                      '<b style="color:#c96">Red</b> vertebral bodies, '
+                      '<b style="color:#89f">blue</b> intervertebral discs, '
+                      '<b>white/green</b> spinal canal and cord, '
+                      '<b style="color:#a8f">purple/cyan</b> posterior elements '
+                      '(arch, spinous and articular processes). The mask arrives on '
+                      'SPINEPS\'s own resampled, reoriented grid, so it is mapped back onto '
+                      'the scan through the image affine — matching by array index instead '
+                      'produces a visibly rotated overlay.')
+    if cmp_fig:
+        out += _pstep("Measured: ours vs the reference", cmp_fig,
+                      '<div class="verdict v-info"><b>The honest scorecard.</b> Using SPINEPS as the '
+                      'reference, our self-supervised CNN has the <b>highest precision of all three '
+                      'annotation-free methods on all four structures</b>, and the best overlap on '
+                      'three of four. But the absolute numbers are low — best Dice <b>0.38</b> on the '
+                      'canal — against SPINEPS\'s published <b>0.92</b>. And ours numbers '
+                      '<b>zero</b> vertebrae, because numbering requires labels we do not have. '
+                      'That gap is exactly why a pretrained model is used for that one output.</div>')
+    if methods_fig:
+        out += _pstep("Every method on one slice", methods_fig,
+                      'Left to right: intensity clustering floods the background because it groups '
+                      '<b>brightness</b>, so it cannot separate two adjacent vertebrae that look '
+                      'identical. Our CNN resolves cord, vertebral chain and soft tissue as genuine '
+                      'structures with <b>no annotations</b>. SPINEPS adds the numbered instances '
+                      'neither can reach.')
+    return out
+
+
 def looks_like_mri(sl: np.ndarray, filename: str = "", raw: bytes = None) -> bool:
     """Guard against running medical analysis on a photograph.
 
@@ -548,7 +628,11 @@ def build_pipeline_result(raw: bytes, filename: str, region: str) -> str:
             note = (f'<p class="note">ROI shown. (Canal measurement unavailable: '
                     f'{html.escape(str(e))}.)</p>')
     inside = _model_internals_for(sl, ckpt)
-    return f'<div class="pipeline">{out}</div>{note}{inside}'
+    # spine only: show what a model trained on external labels achieves, and
+    # our measured distance from it
+    ref = f'<div class="pipeline">{_spineps_reference_block()}</div>' \
+        if region != "brain" else ""
+    return f'<div class="pipeline">{out}</div>{note}{inside}{ref}'
 
 
 def _model_internals_for(sl, ckpt) -> str:
@@ -923,6 +1007,11 @@ button:disabled{{opacity:.45;cursor:not-allowed}}
 .result{{width:100%;display:block;border-radius:var(--r-s);background:oklch(0.16 0 0);
   border:1px solid var(--line)}}
 .pstep .note{{margin-top:9px}}
+/* section break inside a results grid: spans every column so the grid does not
+   place it as a card beside the steps */
+.sec{{grid-column:1/-1;margin:16px 0 -4px;font-size:0.9375rem;font-weight:650;
+  padding-top:16px;border-top:1px solid var(--line)}}
+.pipeline > .note{{grid-column:1/-1;margin-top:-2px}}
 .note{{font-size:0.75rem;line-height:1.55;color:var(--ink-2)}}
 .note b{{color:var(--ink);font-weight:600}}
 

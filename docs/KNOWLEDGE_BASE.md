@@ -265,3 +265,305 @@ speed + less memory. **GradScaler** to keep fp16 training stable.
 - **Overfitting?** No — validation tracks training, gap ≈ 0, converged ~epoch 25.
 - **Metrics for segmentation?** Dice, Jaccard, Hausdorff, ASD, sensitivity,
   specificity, precision, F1, Relative Volume Error.
+
+---
+
+## 11. THE SPINE TRACK — the complete story
+
+The brain track had ground truth (BraTS) and so it is a conventional supervised
+story. **The spine track is the interesting one**, because it had no labels at
+all, and most of the engineering effort went into working out what is and is not
+possible in that situation. Judges will probe here — this is the full account.
+
+### 11.1 What the spine data actually is
+
+- **20 cases total**: 10 normal (SP1–SP10), 10 pathological (SP11+).
+- Sagittal MRI, sequences **T1 / T2 / STIR**.
+- **No annotations of any kind.** No masks, no boxes, no labels.
+- Highly heterogeneous geometry (voxel 0.25–1.3 mm, slice thickness 3–13 mm).
+- Split 5 train / 5 test within each group, per the coordinator's instruction.
+
+### 11.2 The seven things we built for spine, in order
+
+| # | Method | Needs labels? | Outcome |
+|---|---|---|---|
+| 1 | CLAHE enhancement (classical) | no | baseline, works |
+| 2 | **Self-supervised U-Net enhancement (ours)** | no | **beats CLAHE on 3/3 sequences** |
+| 3 | k-means / SLIC ROI clustering | no | works, but groups brightness only |
+| 4 | **Self-supervised CNN segmentation (ours)** | no | **best annotation-free method, measured** |
+| 5 | Autoencoder anomaly detection | no | **FAILED validation — withdrawn** |
+| 6 | Canal-width morphometry (ours) | no | works, 91/92 slices |
+| 7 | SPINEPS per-vertebra instances | pretrained | 17 vertebrae, 13 structures |
+
+### 11.3 The self-supervised CNN — how something with no labels trains at all
+
+This is the question most likely to be asked, because it sounds impossible.
+
+It is **differentiable feature clustering** (Kanezaki, ICASSP 2018). A small CNN
+is trained **on the single scan in front of it**, from scratch, for ~120
+iterations. Its supervision comes from three constraints, none of which need a
+human label:
+
+1. **Commit** — each pixel's feature vector is pushed toward its own argmax
+   class. The network trains on its own current best guess, which sharpens fuzzy
+   assignments into definite ones.
+2. **Continuity** — neighbouring pixels are pushed to agree, so regions come out
+   spatially coherent instead of speckled.
+3. **Balance** — an entropy term on the mean class distribution stops every
+   pixel collapsing into one class. Without it the whole image becomes one
+   region (we hit this).
+
+The number of structures it finds is **emergent, not set by us**: we offer 12
+candidate classes and it settled on **9–10** on the test slice.
+
+**Two real bugs, both measured, both worth telling:**
+
+- *Collapse to 1 class.* We first masked the background by zeroing the
+  **features**. That made every background pixel argmax to the same class, and
+  the cross-entropy term then dragged the entire image into it. Fix: mask the
+  **loss**, not the features.
+- *Collapse to 2 classes.* Applying the superpixel prior every training
+  iteration compounded with the cross-entropy feedback. **Measured: 2 classes
+  with the prior in-loop, 11 without.** Fix: apply the prior once, after
+  training.
+
+### 11.4 What we ditched, and why (be ready for this)
+
+| Ditched | Why |
+|---|---|
+| **Supervised spine segmentation** | No labels exist and no external data was permitted. Any "trained" claim would be fabricated. |
+| **Autoencoder anomaly detection** | Validated at **AUC 0.266 — worse than chance**; normal spines scored *higher* (0.0199) than pathological (0.0167). We tested five alternative scoring statistics (mean 0.304, max 0.500, p99 0.388, p95 0.312, top-1% 0.413) — all at or below chance, so it was not a scoring artefact. The verdict box was removed; the map remains only as a labelled visualisation. |
+| **Vertebra instance segmentation, our own** | **Four** attempts: component uniformity/linearity scoring; canal-proximity prior; periodicity + autocorrelation; tissue-constrained band. All four locked onto soft tissue rather than bone. Not shipped. |
+| **3D volumetric models** | Need 16 GB+ VRAM; we have 6 GB. 2D slice-wise is the documented workaround. |
+| **Diagnosis / severity claims** | We measure canal width; we do not output "stenosis". The statistics do not support a diagnostic claim (p = 0.089). |
+
+The pattern is deliberate: **we validated before shipping, and we withdrew two
+things that failed.** That is a stronger position than claiming four working
+features, because a judge can break a false claim in one question.
+
+---
+
+## 12. SPINEPS — the pretrained model (what, why, trained on what)
+
+### 12.1 What it is
+
+**SPINEPS** — Möller et al., *"SPINEPS: automatic whole spine segmentation of
+T2-weighted MR images using a two-phase approach to multi-class semantic and
+instance segmentation"*, **European Radiology (2025)**. Apache-2.0 licence.
+Built on **nnU-Net**. Runs in its own Python 3.11 conda environment.
+
+**Two phases:**
+1. **Semantic** — labels 14 spinal structure *types* (body, disc, canal, cord,
+   arch, processes). Answers "what kind of tissue is this pixel?"
+2. **Instance** — converts that into *individually numbered* vertebrae.
+   Answers "which bone is this?"
+
+### 12.2 What it was trained on
+
+- The public **SPIDER** dataset (annotated lumbar spine MRI).
+- The **German National Cohort (NAKO)** — a large population imaging study.
+- Roughly **1,600+ subjects**, with expert annotations.
+
+That external annotated data is exactly what we do not have and are not
+permitted to collect — which is the entire argument for using it.
+
+### 12.3 Its published accuracy (theirs, not ours)
+
+| Structure | Dice |
+|---|---|
+| Vertebrae | **0.920** |
+| Intervertebral discs | **0.967** |
+| Spinal canal | **0.958** |
+
+**Say clearly: these are their numbers on their test set. We claim none of them.**
+
+### 12.4 What it produced on OUR data (case SP11, sagittal T2w 512×512×12)
+
+| Phase | Result |
+|---|---|
+| Semantic | **13 structures** — labels 41–49, 60, 61, 62, 100 |
+| Instance | **17 individually numbered vertebrae** |
+| Runtime | **401 s** total, instance phase on CPU (~25 s per vertebra) |
+
+### 12.5 What the numbers on the spine actually MEAN
+
+Two different numbering systems appear, and confusing them is an easy trap:
+
+**A. Instance IDs (1, 2, 3 … 17)** — the numbers drawn on each coloured
+vertebra. They mean *"this is a distinct bone, separate from its neighbour."*
+They are an **ordering down the spine**, not a diagnosis, not a severity score,
+and not an anatomical name. ID 5 is simply the fifth vertebra the model
+separated.
+
+**B. Semantic label values** — the mask's pixel values, which are structure
+*types* from the TPTBox convention:
+
+| Value | Structure |
+|---|---|
+| 41 | Arcus vertebrae (vertebral arch) |
+| 42 | Spinous process |
+| 43 / 44 | Costal process left / right |
+| 45 / 46 | Superior articular process left / right |
+| 47 / 48 | Inferior articular process left / right |
+| **49** | **Vertebral body (corpus)** |
+| **60** | **Spinal cord** |
+| **61** | **Spinal canal** |
+| 62 | Endplate |
+| **100** | **Intervertebral disc** |
+
+So a pixel valued 100 is disc tissue; a vertebra tagged instance 7 is the
+seventh bone down. Different questions, different numbers.
+
+### 12.6 Why using it is defensible
+
+1. **The required output is supervised by nature.** Naming a herniated disc
+   requires having seen examples labelled "herniated disc". With 20 unlabelled
+   cases and no external data, *no model we train can produce it.* That is a
+   property of the problem, not a failure of effort.
+2. **We proved the alternatives fall short** — four annotation-free methods,
+   measured, one reported as an outright failure (11.4, 13).
+3. **We supply it no annotations and do not train it**, which matches the
+   brief's "no annotations for model training".
+4. **It is auditable** — open source, peer-reviewed, published weights and
+   accuracy. Anyone can re-run it.
+5. **Provenance is labelled everywhere it appears** — demo, figures, report.
+
+### 12.7 The two engineering problems it caused (good story, tells well)
+
+- **CUDA OOM on the instance phase.** Failed at **12.44 GiB on a 6 GiB card**.
+  Our first hypothesis — that the scan's 0.44 mm in-plane resolution was to
+  blame — was **wrong**: downsampling 3.6x produced a byte-identical failure.
+  The log revealed why: the instance phase does not read the input scan, it
+  reads the **semantic mask SPINEPS just wrote**, which is stored in SPINEPS's
+  own internal 0.75 mm space (512x512x53) regardless of input. Fixed by running
+  that phase on CPU.
+- **Misaligned overlay.** SPINEPS **resamples and reorients** to a canonical
+  axis order, so a mask cannot be matched to the scan by array index. Fixed with
+  `spineps_runner.mask_in_scan_space()`, which composes the two affines and
+  resamples nearest-neighbour (interpolating integer labels would invent classes
+  that do not exist).
+
+---
+
+## 13. OURS vs SPINEPS — the measured comparison
+
+`src/spine_vs_spineps.py` produces `results/spine_vs_spineps.json` and
+`outputs/demo/spine_vs_spineps.png`.
+
+**The idea:** SPINEPS can name structures we cannot, so use it as a *reference
+standard* and measure how much our annotation-free methods recover without ever
+seeing a label. This converts "we used a pretrained model" into "here is exactly
+what our own work achieves, and exactly what it cannot."
+
+**Dice (case SP11, slice 5; CNN = mean ± sd over 3 runs):**
+
+| Structure | k-means | SLIC | **Self-sup. CNN (ours)** |
+|---|---|---|---|
+| Vertebral bodies | 0.263 | 0.204 | **0.257 ± 0.018** |
+| Intervertebral discs | 0.047 | 0.047 | **0.090 ± 0.017** |
+| Spinal canal + cord | 0.304 | 0.302 | **0.380 ± 0.041** |
+| Posterior elements | 0.071 | 0.097 | **0.169 ± 0.032** |
+
+**Precision** (does the region stop at the structure's edge?):
+
+| Structure | k-means | SLIC | **Ours** |
+|---|---|---|---|
+| Vertebral bodies | 0.157 | 0.121 | **0.191** |
+| Discs | 0.024 | 0.024 | **0.050** |
+| Canal + cord | 0.194 | 0.190 | **0.310** |
+| Posterior elements | 0.038 | 0.052 | **0.116** |
+
+**The three claims this supports:**
+1. Our CNN has the **highest precision on all four structures**, and the best
+   overlap on three of four (vertebral bodies is a tie within uncertainty).
+2. Classical clustering shows **high recall, very low precision** (k-means
+   recall 0.81 on bodies but precision 0.16) — it *finds* structures but its
+   clusters flood across the image, exactly the "groups brightness" failure.
+3. Even our best is **Dice 0.38** against SPINEPS's published **0.92**, and ours
+   numbers **zero** vertebrae. That gap is the justification, quantified.
+
+### 13.1 Three methodological honesty points (judges may probe these)
+
+- **The Dice values are oracle-assisted upper bounds.** Unsupervised methods
+  return anonymous cluster indices; to score them at all, the reference must
+  pick which cluster to compare. So the number answers *"was this structure
+  carved out as a distinct region?"* — **not** *"can the method name it?"*
+  Naming is precisely the supervised step our data cannot provide.
+- **We checked whether the metric was unfair** to methods with more clusters
+  (ours makes 9–10, k-means 4, so no single cluster can cover a whole
+  structure). We added a greedy **best-union** metric to test exactly that. It
+  moved the result by 0.002 (0.226 to 0.228) — so the concern was **measured and
+  rejected**, not assumed away.
+- **The CNN is stochastic.** It is seeded, but cuDNN chooses nondeterministic
+  kernels, so runs differ (measured: posterior-element Dice 0.215 vs 0.143 on
+  two runs of identical code). Reporting one number would not be reproducible,
+  so all CNN figures are **mean ± sd over 3 runs**.
+
+---
+
+## 14. WHAT COULD BE IMPROVED (asked in almost every viva)
+
+Have a real answer here — "nothing" reads as not understanding the work.
+
+**Spine, biggest wins first:**
+1. **Label a small subset and fine-tune.** Even 20–30 annotated slices would
+   allow a supervised head on top of our features, turning anonymous regions
+   into named structures. This is the single highest-value next step.
+2. **3D instead of 2D.** We segment slice by slice; vertebrae are 3D objects and
+   through-plane context would improve boundaries. Blocked by 6 GB VRAM.
+3. **Distil SPINEPS output into pseudo-labels** and train a small model on them
+   — gets instance numbering without shipping SPINEPS at inference time.
+4. **More cases.** 20 patients is small; the canal-width trend (0.485 vs 0.557,
+   AUC 0.69) points the right way but is **not significant (p = 0.089)**. Around
+   40 per group would likely settle it.
+
+**Brain:**
+5. **3D or 2.5D segmentation** — adjacent-slice context typically adds several
+   Dice points on BraTS.
+6. **Ensembling** across seeds/folds — a reliable small gain we did not spend
+   time on.
+7. **Test-time augmentation** (flips) — cheap, usually worth about 1 Dice point.
+8. **Boundary-aware loss** (add a surface term) — our Hausdorff is the weakest
+   metric relative to Dice, which points at boundary quality.
+
+**Engineering:**
+9. **Determinism** — enable deterministic cuDNN kernels so results are exactly
+   reproducible rather than mean ± sd.
+10. **SPINEPS on GPU** would need more than 6 GB, or patched sliding-window
+    inference in its instance phase.
+
+---
+
+## 15. RAPID Q&A — spine and SPINEPS
+
+- **Did you train SPINEPS?** No. We give it no annotations and do not train it.
+  We run published weights and label its provenance everywhere.
+- **What was it trained on?** SPIDER + the German National Cohort, about 1,600+
+  annotated subjects. That external labelled data is what we lack.
+- **Isn't that against the rules?** The organisers approved a public pretrained
+  model and asked for justification — that document is
+  `PRETRAINED_MODEL_JUSTIFICATION.md`. Our own annotation-free pipeline is shown
+  *beside* it, never replaced by it.
+- **What do the numbers 1–17 on the vertebrae mean?** Instance IDs — "this is a
+  separate bone from the one above." Not a diagnosis, not severity, not an
+  anatomical name.
+- **What do 41–49, 60, 61, 62, 100 mean?** Structure *types*: 49 vertebral body,
+  60 cord, 61 canal, 100 disc, 41–48 arch and processes.
+- **How good is your own spine segmentation, honestly?** Best Dice **0.38**
+  (canal) against SPINEPS as reference, and the highest precision of the three
+  annotation-free methods on all four structures — but zero numbered vertebrae,
+  because numbering needs labels.
+- **Why is your Dice so low?** Two reasons, both real: unsupervised clusters are
+  anonymous and bleed past structure edges (precision 0.19–0.31), and the metric
+  is an oracle-assisted upper bound on a method that was never given a target to
+  fit.
+- **Why did downsampling not fix the OOM?** Because the instance phase reads the
+  saved semantic mask in SPINEPS's own 0.75 mm space, not our input — so the
+  working volume never changed. We measured that, then moved to CPU.
+- **Why not run SPINEPS live in the demo?** 401 s per scan on CPU. It is shown
+  as a precomputed reference on a named case, explicitly labelled as not having
+  been run on the uploaded scan.
+- **Which parts are yours and which are not?** Ours: all brain enhancement and
+  segmentation, all spine enhancement, the self-supervised CNN segmentation, the
+  canal morphometry, and every validation. Not ours: SPINEPS instance/semantic
+  masks, used for one output and labelled as pretrained everywhere.

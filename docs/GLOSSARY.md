@@ -116,3 +116,59 @@ what it means simply · *(technical note if a judge digs deeper)*.
 - "SSIM 0.9 means the cleaned scan is 90%+ structurally identical to the true one."
 - "Dice is just the overlap between our outline and the doctor's — 0.8 is strong."
 - "CLAHE is the textbook method; it boosts contrast but amplifies noise — we beat it."
+
+---
+
+## Spine + pretrained-model words (added with SPINEPS)
+
+- **Semantic segmentation** — labels each pixel by *what kind* of thing it is
+  ("this is disc tissue"). Two neighbouring vertebrae get the same label.
+- **Instance segmentation** — separates *individual objects* ("this is vertebra
+  5, that is vertebra 6"). Harder, and the thing that needs labels.
+- **Instance ID** — the number drawn on each vertebra in our SPINEPS figure. It
+  means "a separate bone from the one above", **not** a diagnosis or a severity
+  score.
+- **Pretrained model** — a model someone else already trained on their own
+  labelled data; you run it as-is. We use one (SPINEPS) for exactly one output
+  and label it everywhere.
+- **SPINEPS** — published spine model (Möller et al., *European Radiology* 2025,
+  Apache-2.0), trained on the SPIDER dataset + the German National Cohort,
+  ~1,600+ annotated subjects. Published Dice 0.92 vertebrae / 0.967 discs /
+  0.958 canal. Those are **their** numbers, not ours.
+- **nnU-Net** — the self-configuring U-Net framework SPINEPS is built on; it
+  picks its own preprocessing and patch sizes per dataset.
+- **Reference standard** — a trusted output you measure yourself against when
+  you have no ground truth. We use SPINEPS this way.
+- **Self-supervised** — the model makes its own training target from the data
+  (e.g. degrade a scan, learn to restore it). No human labels.
+- **Differentiable feature clustering** — the annotation-free segmentation
+  method we use (Kanezaki 2018): a small CNN trains on one image using
+  commit + continuity + balance constraints instead of labels.
+- **Precision vs recall** (for a segmented region) — *recall* = how much of the
+  real structure you covered; *precision* = how much of what you marked was
+  actually the structure. Clustering scores **high recall, low precision**: it
+  finds the structure but spills far past its edges.
+- **Oracle-assisted metric** — a score where the answer key picks which of your
+  anonymous clusters to grade. It is an **upper bound**, and we say so.
+- **Affine (in NIfTI)** — the matrix mapping voxel indices to real-world
+  millimetres. Two images line up only through their affines, never by array
+  index — which is why our first SPINEPS overlay was rotated.
+- **Nearest-neighbour resampling** — resizing a label map by copying the closest
+  label. Required for integer labels; smooth interpolation would invent classes
+  that do not exist.
+- **Vertebral body (corpus)** — the big drum-shaped front part of a vertebra
+  (SPINEPS label 49).
+- **Posterior elements** — the bony arch and processes behind the body (labels
+  41–48): arch, spinous process, costal and articular processes.
+- **Spinal canal vs spinal cord** — the canal (label 61) is the bony tunnel; the
+  cord (label 60) is the nerve tissue inside it. Stenosis narrows the canal.
+- **Endplate** — the cartilage surface between a vertebral body and its disc
+  (label 62).
+
+### 3 more lines that make you sound fluent
+- "Semantic says *what*, instance says *which one* — instance is the part that
+  needs labels, which is why we use a pretrained model for it."
+- "Our clustering has high recall but low precision: it finds the structure and
+  then bleeds past its edge."
+- "Masks only line up through the affine — SPINEPS reorients, so index-matching
+  gives you a rotated overlay."

@@ -8,9 +8,9 @@ comes from a script in `src/` and is stored as JSON in `results/`.
 
 | File | What to do with it |
 |---|---|
-| `01_PRESENTATION_PLAN.md` | 14 slides, one block each. Paste into **Gamma**. Every slide names the exact image to upload and the line to say. Ends with a Q&A cheat sheet. |
-| `02_PROJECT_REPORT.md` | The 3–4 page report. Paste into Word/Docs, keep the section order, drop the four figures where marked. |
-| `03_DEMO_VIDEO_SCRIPT.md` | Minute-by-minute script for the 5–6 minute demo video, with what to click and what to say. |
+| `01_PRESENTATION_PLAN.md` | **17 slides**, one block each. Paste into **Gamma**. Every slide names the exact image to upload and the line to say. Ends with a Q&A cheat sheet, including a full spine / pretrained-model section. |
+| `02_PROJECT_REPORT.md` | The 3–4 page report. Paste into Word/Docs, keep the section order, drop the **six** figures where marked. |
+| `03_DEMO_VIDEO_SCRIPT.md` | **A 60-second script, written to time** (155 counted words) — this is the deliverable. An extended ~6 min 40 s cut follows it in the same file, for the live walkthrough during judging. |
 | `04_PRETRAINED_MODEL_JUSTIFICATION.md` | **The organisers asked us to justify using a pretrained model.** This is that document — hand it over as-is, and it's also the answer to give if asked live. |
 | `images/` | All figures the plan and report reference, correctly named. |
 
@@ -30,6 +30,7 @@ comes from a script in `src/` and is stored as JSON in `results/`.
 | Noise removed | **0.0068 → 0.0043**; HE and CLAHE *raise* it |
 | Spine per-sequence models | win **3 / 3** sequences |
 | Speed | **4 ms/image**, 236 images/sec, 7.77 M parameters |
+| Our spine segmentation vs reference | **highest precision on 4/4 structures**; best Dice **0.38** vs the pretrained model's published **0.92** |
 
 ## The one-sentence pitch
 
