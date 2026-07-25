@@ -66,6 +66,49 @@ def _superpixels(img01: np.ndarray, n_segments: int = 220):
                 channel_axis=None, start_label=0, mask=img01 > 0.02)
 
 
+def _body_mask(img01: np.ndarray) -> np.ndarray:
+    """Pixels that are actually the patient, not air.
+
+    A fixed low threshold (we used `> 0.02`) is wrong here, because this runs on
+    the CLAHE-enhanced image and CLAHE amplifies background noise far above any
+    such cutoff. The network then spent whole classes describing speckle in the
+    air outside the body — visible as coloured blobs floating in the background,
+    and a waste of the class budget that left real anatomy under-segmented.
+
+    Otsu picks the tissue/air split from the image's own histogram, then we keep
+    the largest connected component (the patient) and close small holes so
+    interior dark structures — the canal, the airway — stay inside the mask
+    rather than being punched out of it.
+    """
+    import cv2
+    u8 = (np.clip(img01, 0, 1) * 255).astype(np.uint8)
+    _t, th = cv2.threshold(u8, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+    th = cv2.morphologyEx(th, cv2.MORPH_CLOSE, k, iterations=2)
+    n, lab, stats, _c = cv2.connectedComponentsWithStats((th > 0).astype(np.uint8), 8)
+    if n > 1:
+        biggest = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+        th = (lab == biggest).astype(np.uint8) * 255
+    # Fill enclosed holes so the canal and airway count as inside the body — but
+    # only SMALL ones. Filling every enclosed region also swallows the large
+    # concave pocket under the neck, which is air, and colouring it makes the
+    # segmentation look like it is labelling nothing.
+    ff = th.copy()
+    h, w = ff.shape
+    cv2.floodFill(ff, np.zeros((h + 2, w + 2), np.uint8), (0, 0), 255)
+    holes = cv2.bitwise_not(ff)
+    hn, hlab, hstats, _hc = cv2.connectedComponentsWithStats((holes > 0).astype(np.uint8), 8)
+    max_hole = 0.03 * h * w
+    keep = np.zeros_like(th)
+    for i in range(1, hn):
+        if hstats[i, cv2.CC_STAT_AREA] <= max_hole:
+            keep[hlab == i] = 255
+    m = (th | keep) > 0
+    # if Otsu misfires on a very low-contrast scan, fall back rather than
+    # returning a mask that covers almost nothing
+    return m if m.mean() > 0.02 else (img01 > 0.02)
+
+
 def segment(img01: np.ndarray, n_classes: int = 12, iters: int = 120,
             lr: float = 0.10, continuity_weight: float = 1.0,
             balance_weight: float = 2.0,
@@ -94,7 +137,7 @@ def segment(img01: np.ndarray, n_classes: int = 12, iters: int = 120,
     # features themselves makes every background pixel argmax to the same
     # class, and the cross-entropy term then drags the whole image into it —
     # which collapses the segmentation to a single region.
-    fg_np = img01 > 0.02
+    fg_np = _body_mask(img01)
     fg_flat = torch.from_numpy(fg_np.reshape(-1)).to(DEVICE)
     n_final = n_classes
     for _ in range(iters):
@@ -143,7 +186,7 @@ def segment(img01: np.ndarray, n_classes: int = 12, iters: int = 120,
             flat_lab[idx] = np.bincount(flat_lab[idx]).argmax()
         labels = flat_lab.reshape(h, w)
 
-    labels[img01 <= 0.02] = -1                          # background stays unlabelled
+    labels[~fg_np] = -1                                 # background stays unlabelled
 
     # renumber surviving classes to 0..n-1, ordered by mean intensity so the
     # mapping is stable and interpretable (dark structures first)
