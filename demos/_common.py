@@ -25,7 +25,7 @@ import numpy as np                                            # noqa: E402
 OUT = "outputs/demo_runs"
 os.makedirs(OUT, exist_ok=True)
 
-BRAIN = "showcase/for_enhancement/BRAIN_BraTS20_Training_001_flair.nii"
+BRAIN = "showcase/for_enhancement/BRAIN_BraTS20_Training_004_flair.nii"
 SPINE = "showcase/for_spineps/SPINE_SP5_NORM_T2.nii.gz"
 SPINE_PATH = "showcase/for_spineps/SPINE_SP11_PATH_T2.nii.gz"
 
