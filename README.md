@@ -20,6 +20,8 @@ self-supervised abnormality localisation).
 | Spine per-sequence models | Beat one pooled model on **3/3** sequences (T1 +0.23, T2 +0.21, STIR +0.17 SSIM) |
 | Spine canal measurement | Canal found on **91/92** slices; narrowing ratio 0.485 pathological vs 0.557 normal (AUC 0.69, p=0.089 — a trend, not significant) |
 | Spine anomaly detector | **Failed validation (AUC 0.27) — reported, not shipped** |
+| Our spine segmentation vs a pretrained reference | Highest precision of all three annotation-free methods on **4/4** structures; best Dice **0.38** vs the reference's published **0.92** |
+| Can canal width identify a diseased spine? | **No** — AUC 0.583 whole-spine, 0.688 per-level, p = 0.14. Tested twice, reported as negative |
 | Speed | **4.2 ms/image · 236 images/sec**, 7.77 M parameters, 31 MB, 390 MB peak GPU |
 | Cross-validation | 0.59 ± **0.04** Dice over 3 folds — consistent, not lucky |
 
@@ -105,8 +107,6 @@ Two more views:
 ├── stats/                  Dataset analysis tables (CSV + JSON)
 ├── outputs/                Generated figures, overlays, demo page
 │   └── demo/demo_page.html   offline slide-style walkthrough
-├── docs/                   Report, knowledge base, glossary, demo script
-├── handoff/                Presentation / report / video preparation pack
 ├── showcase/               Curated unseen scans for live demonstration
 └── data/                   Datasets (not in git — see below)
 ```
@@ -194,13 +194,49 @@ failed**, see limitations.
 
 ---
 
-## Documentation
+## Running a single stage
 
-| File | Contents |
-|---|---|
-| `docs/REPORT.md` | Technical report, structured to the evaluation rubric |
-| `docs/KNOWLEDGE_BASE.md` | Every model, training run, loss, metric and term |
-| `docs/STAGES.md` | What each of the four stages required and how we met it |
-| `docs/GLOSSARY.md` | Plain-language definition of every term used |
-| `docs/DEMO_SCRIPT.md` | How to present the demo |
-| `handoff/` | Slide-by-slide presentation plan, report draft, video script |
+Each file in `demos/` runs one stage on its own, prints its real numbers, and
+saves the figure to `outputs/demo_runs/`. Each file's docstring explains the
+architecture, the loss and the inputs for that stage.
+
+```bash
+python demos/03_brain_unet_enhance.py    # our enhancement model
+python demos/04_brain_tumour_seg.py      # tumour segmentation
+python demos/12_spine_selfsup_seg.py     # annotation-free spine segmentation
+python demos/run_everything.py           # every stage, brain then spine
+```
+
+## Reproducing the pretrained-model comparison
+
+SPINEPS runs in its own conda environment, because it requires Python 3.11 and
+pins dependencies that would disturb the main one:
+
+```bash
+conda create -n spineps python=3.11 -y
+conda activate spineps
+pip install torch==2.6.0 torchvision==0.21.0 --index-url https://download.pytorch.org/whl/cu124
+pip install spineps
+pip install --force-reinstall --no-deps torch==2.6.0 torchvision==0.21.0 --index-url https://download.pytorch.org/whl/cu124
+```
+
+That last line is not redundant: `pip install spineps` pulls `nnunetv2`, which
+replaces the CUDA build of torch with the CPU wheel and leaves `torchvision`
+mismatched. Reinstalling the matched pair with `--no-deps` afterwards fixes it.
+
+Two further notes, both found the hard way:
+
+- The **instance phase** forwards its whole working volume at once and needs
+  about 12.4 GB of VRAM. On a 6 GB card it runs on CPU (~400 s). The semantic
+  phase fits on GPU and completes in well under a minute.
+- SPINEPS **resamples and reorients** its masks, so they cannot be matched to
+  the input by array index — `spineps_runner.mask_in_scan_space()` maps them
+  back through the image affine.
+
+Then:
+
+```bash
+python src/spine_vs_spineps.py       # our methods scored against the reference
+python src/spine_stenosis_test.py    # can canal width separate the groups?
+python src/spine_level_analysis.py   # where is the canal narrowest?
+```
