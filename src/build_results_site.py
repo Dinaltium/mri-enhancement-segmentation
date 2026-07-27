@@ -28,6 +28,8 @@ import numpy as np
 OUT_DIR = "outputs/results_site"
 HIST = "results/3d/history.json"
 WHOLE = "results/3d/whole_volume_eval.json"
+PREDS_PNG = "outputs/results_site/predictions.png"
+SHOWN = "results/3d/shown_cases.json"
 
 # our 2D figures, from results/segmentation_full_metrics.json
 TWO_D = {"mean": 0.76, "necrotic": 0.67, "oedema": 0.79, "enhancing": 0.84}
@@ -124,6 +126,36 @@ def build():
     verdict = ("3D beats 2D" if d > 0.02 else
                "2D beats 3D" if d < -0.02 else "no meaningful difference")
 
+    # per-case predictions, if the inference notebook has been run
+    preds_block = ""
+    if os.path.exists(PREDS_PNG):
+        b = base64.b64encode(open(PREDS_PNG, "rb").read()).decode()
+        cases = json.load(open(SHOWN)) if os.path.exists(SHOWN) else []
+        rows_html = "".join(
+            f"<tr><td>{c['case']}</td><td class='n'>{c['necrotic']:.3f}</td>"
+            f"<td class='n'>{c['oedema']:.3f}</td><td class='n'>{c['enhancing']:.3f}</td>"
+            f"<td class='n b'>{c['mean']:.3f}</td></tr>" for c in cases)
+        tbl = (f"<table style='margin-top:14px'><tr><th>Patient</th>"
+               f"<th style='text-align:right'>necrotic</th>"
+               f"<th style='text-align:right'>oedema</th>"
+               f"<th style='text-align:right'>enhancing</th>"
+               f"<th style='text-align:right'>mean</th></tr>{rows_html}</table>"
+               ) if cases else ""
+        preds_block = (
+            f'<img src="data:image/png;base64,{b}">{tbl}'
+            '<p class="note">Middle column is the model, right is the radiologist, '
+            'on patients held out of training. <span style="color:#b4432c">Red</span> '
+            'enhancing tumour, <span style="color:#1f6f4a">green</span> oedema, '
+            '<span style="color:#36c">blue</span> necrotic core.</p>'
+            '<p class="note"><b>Read these as examples, not as the result.</b> Four '
+            'patients out of twenty-five; the honest figure is the whole-volume '
+            'evaluation across all of them. Note the spread — the weakest case here '
+            'scores 0.737 and the strongest 0.884, which is the variation a single '
+            'cherry-picked image would hide.</p>')
+    else:
+        preds_block = ('<p class="note">Run <code>notebooks/predict_3d.ipynb</code> '
+                       'on Kaggle to generate per-case predictions.</p>')
+
     total_min = sum(1 for _ in hist) * 118 / 60
     platforms = sorted({h.get("platform", "?") for h in hist})
 
@@ -203,6 +235,11 @@ MedhaDrishti hackathon, now measured</p>
   <p class="note">The necrotic core is where 3D gains most, which is what you
   would expect: it is a compact three-dimensional structure, so through-plane
   context helps it more than it helps the diffuse oedema.</p>
+</div>
+
+<div class="card">
+  <h2>What it actually produces</h2>
+  {preds_block}
 </div>
 
 <div class="card">
